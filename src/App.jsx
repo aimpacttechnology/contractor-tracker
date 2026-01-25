@@ -3,7 +3,6 @@ import { Calendar, Clock, DollarSign, MapPin, Camera, FileText, Plus, Trash2, Do
 
 // PDF generation using jsPDF
 const generatePDF = async (entries, contractorInfo) => {
-  // Dynamic import of jsPDF
   const { jsPDF } = await import('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
   
   const doc = new jsPDF();
@@ -12,7 +11,6 @@ const generatePDF = async (entries, contractorInfo) => {
   const margin = 20;
   let yPos = margin;
 
-  // Header
   doc.setFillColor(26, 32, 44);
   doc.rect(0, 0, pageWidth, 45, 'F');
   
@@ -27,7 +25,6 @@ const generatePDF = async (entries, contractorInfo) => {
 
   yPos = 60;
 
-  // Contractor Info
   if (contractorInfo.name || contractorInfo.business) {
     doc.setTextColor(26, 32, 44);
     doc.setFontSize(12);
@@ -48,7 +45,6 @@ const generatePDF = async (entries, contractorInfo) => {
     yPos += 5;
   }
 
-  // Summary
   const totals = entries.reduce((acc, entry) => ({
     standardHours: acc.standardHours + (parseFloat(entry.standardHours) || 0),
     overtimeHours: acc.overtimeHours + (parseFloat(entry.overtimeHours) || 0),
@@ -84,13 +80,12 @@ const generatePDF = async (entries, contractorInfo) => {
   doc.text(`TOTAL EXPENSES: $${totalExpenses.toFixed(2)}`, margin, yPos);
   yPos += 15;
 
-  // Entries
   doc.setFontSize(12);
   doc.setFont(undefined, 'bold');
   doc.text('DETAILED ENTRIES', margin, yPos);
   yPos += 10;
 
-  entries.sort((a, b) => new Date(a.date) - new Date(b.date)).forEach((entry, index) => {
+  entries.sort((a, b) => new Date(a.date) - new Date(b.date)).forEach((entry) => {
     if (yPos > pageHeight - 40) {
       doc.addPage();
       yPos = margin;
@@ -140,7 +135,6 @@ const generatePDF = async (entries, contractorInfo) => {
     yPos += 8;
   });
 
-  // Footer
   const fileName = `contractor_report_${new Date().toISOString().split('T')[0]}.pdf`;
   doc.save(fileName);
 };
@@ -165,7 +159,6 @@ export default function ContractorTracker() {
   const [showInfo, setShowInfo] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load data from localStorage
   useEffect(() => {
     try {
       const entriesData = localStorage.getItem('contractor-entries');
@@ -184,7 +177,6 @@ export default function ContractorTracker() {
     }
   }, []);
 
-  // Save entries to localStorage
   const saveEntries = (newEntries) => {
     try {
       localStorage.setItem('contractor-entries', JSON.stringify(newEntries));
@@ -193,7 +185,6 @@ export default function ContractorTracker() {
     }
   };
 
-  // Save contractor info to localStorage
   const saveContractorInfo = (info) => {
     try {
       localStorage.setItem('contractor-info', JSON.stringify(info));
@@ -229,7 +220,6 @@ export default function ContractorTracker() {
     setEntries(updatedEntries);
     saveEntries(updatedEntries);
 
-    // Reset form
     setCurrentEntry({
       date: new Date().toISOString().split('T')[0],
       standardHours: '',
@@ -265,22 +255,39 @@ export default function ContractorTracker() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
-        <div className="text-amber-400 text-xl font-light">Loading...</div>
+      <div style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#fbbf24',
+        fontSize: '20px',
+        fontFamily: "'Outfit', sans-serif"
+      }}>
+        Loading...
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 pb-20">
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
+      color: '#f1f5f9',
+      paddingBottom: '80px',
+      fontFamily: "'Outfit', sans-serif"
+    }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
         
         * {
-          font-family: 'Outfit', sans-serif;
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
         }
         
-        input, textarea, select {
+        body {
           font-family: 'Outfit', sans-serif;
         }
         
@@ -288,10 +295,10 @@ export default function ContractorTracker() {
           font-family: 'JetBrains Mono', monospace;
         }
         
-        input:focus, textarea:focus {
+        input:focus, textarea:focus, select:focus {
           outline: none;
-          border-color: #fbbf24;
-          box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.1);
+          border-color: #fbbf24 !important;
+          box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.1) !important;
         }
         
         @keyframes slideUp {
@@ -319,6 +326,11 @@ export default function ContractorTracker() {
           background: rgba(15, 23, 42, 0.5);
           border: 1px solid rgba(148, 163, 184, 0.2);
           transition: all 0.3s ease;
+          padding: 12px 16px;
+          border-radius: 8px;
+          color: #f1f5f9;
+          font-size: 14px;
+          width: 100%;
         }
         
         .input-field:focus {
@@ -330,6 +342,17 @@ export default function ContractorTracker() {
           background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
           transition: all 0.3s ease;
           box-shadow: 0 4px 14px rgba(251, 191, 36, 0.3);
+          border: none;
+          color: #0f172a;
+          font-weight: 600;
+          cursor: pointer;
+          padding: 16px;
+          border-radius: 12px;
+          font-size: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
         }
         
         .btn-primary:hover {
@@ -340,21 +363,61 @@ export default function ContractorTracker() {
         .btn-primary:active {
           transform: translateY(0);
         }
+        
+        .summary-card {
+          background: rgba(255, 255, 255, 0.05);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 12px;
+          padding: 16px;
+        }
+        
+        .entry-card {
+          background: rgba(30, 41, 59, 0.5);
+          border: 1px solid rgba(100, 116, 139, 0.5);
+          border-radius: 12px;
+          padding: 16px;
+          animation: slideUp 0.4s ease-out;
+          transition: all 0.3s ease;
+        }
+        
+        .entry-card:hover {
+          background: rgba(30, 41, 59, 0.7);
+        }
       `}</style>
 
       {/* Header */}
-      <div className="glass border-b border-slate-700/50 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
+      <div className="glass" style={{
+        borderBottom: '1px solid rgba(100, 116, 139, 0.5)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+        background: 'rgba(255, 255, 255, 0.05)',
+        backdropFilter: 'blur(12px)'
+      }}>
+        <div style={{ maxWidth: '896px', margin: '0 auto', padding: '24px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
-              <h1 className="text-3xl font-bold text-amber-400 tracking-tight">
+              <h1 style={{ fontSize: '30px', fontWeight: '700', color: '#fbbf24', letterSpacing: '-0.5px', margin: 0 }}>
                 CONTRACTOR
               </h1>
-              <p className="text-slate-400 text-sm font-light mt-1">Time & Expense Tracker</p>
+              <p style={{ color: '#94a3b8', fontSize: '14px', fontWeight: '300', marginTop: '4px' }}>Time & Expense Tracker</p>
             </div>
             <button
               onClick={() => setShowInfo(!showInfo)}
-              className="text-sm px-4 py-2 rounded-lg glass hover:bg-white/10 transition-all"
+              style={{
+                fontSize: '14px',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                color: '#f1f5f9',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseEnter={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.1)'}
+              onMouseLeave={(e) => e.target.style.background = 'rgba(255, 255, 255, 0.05)'}
             >
               {showInfo ? 'Close' : 'Info'}
             </button>
@@ -364,27 +427,27 @@ export default function ContractorTracker() {
 
       {/* Contractor Info Panel */}
       {showInfo && (
-        <div className="max-w-4xl mx-auto px-4 mt-6 animate-slide-up">
-          <div className="glass rounded-2xl p-6 border border-amber-400/20">
-            <h2 className="text-xl font-semibold mb-4 text-amber-400">Contractor Information</h2>
-            <div className="space-y-4">
+        <div style={{ maxWidth: '896px', margin: '24px auto 0', padding: '0 16px' }} className="animate-slide-up">
+          <div className="glass" style={{ borderRadius: '16px', padding: '24px', border: '1px solid rgba(251, 191, 36, 0.2)' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '16px', color: '#fbbf24' }}>Contractor Information</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
-                <label className="block text-sm font-medium mb-2 text-slate-300">Your Name</label>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: '#cbd5e1' }}>Your Name</label>
                 <input
                   type="text"
                   value={contractorInfo.name}
                   onChange={(e) => updateContractorInfo('name', e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg input-field text-slate-100"
+                  className="input-field"
                   placeholder="John Doe"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2 text-slate-300">Business Name</label>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: '#cbd5e1' }}>Business Name</label>
                 <input
                   type="text"
                   value={contractorInfo.business}
                   onChange={(e) => updateContractorInfo('business', e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg input-field text-slate-100"
+                  className="input-field"
                   placeholder="Doe Contracting LLC"
                 />
               </div>
@@ -394,109 +457,106 @@ export default function ContractorTracker() {
       )}
 
       {/* Summary Cards */}
-      <div className="max-w-4xl mx-auto px-4 mt-6">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div className="glass rounded-xl p-4 border border-slate-700/50">
-            <div className="flex items-center gap-2 mb-2">
-              <Clock className="w-4 h-4 text-amber-400" />
-              <span className="text-xs text-slate-400">Standard</span>
+      <div style={{ maxWidth: '896px', margin: '24px auto 0', padding: '0 16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+          <div className="summary-card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <Clock size={16} color="#fbbf24" />
+              <span style={{ fontSize: '12px', color: '#94a3b8' }}>Standard</span>
             </div>
-            <div className="text-2xl font-semibold mono text-slate-100">{totals.standardHours.toFixed(1)}</div>
-            <div className="text-xs text-slate-500 mt-1">hours</div>
+            <div className="mono" style={{ fontSize: '24px', fontWeight: '600', color: '#f1f5f9' }}>{totals.standardHours.toFixed(1)}</div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>hours</div>
           </div>
           
-          <div className="glass rounded-xl p-4 border border-slate-700/50">
-            <div className="flex items-center gap-2 mb-2">
-              <Clock className="w-4 h-4 text-orange-400" />
-              <span className="text-xs text-slate-400">Overtime</span>
+          <div className="summary-card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <Clock size={16} color="#fb923c" />
+              <span style={{ fontSize: '12px', color: '#94a3b8' }}>Overtime</span>
             </div>
-            <div className="text-2xl font-semibold mono text-slate-100">{totals.overtimeHours.toFixed(1)}</div>
-            <div className="text-xs text-slate-500 mt-1">hours</div>
+            <div className="mono" style={{ fontSize: '24px', fontWeight: '600', color: '#f1f5f9' }}>{totals.overtimeHours.toFixed(1)}</div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>hours</div>
           </div>
           
-          <div className="glass rounded-xl p-4 border border-slate-700/50">
-            <div className="flex items-center gap-2 mb-2">
-              <MapPin className="w-4 h-4 text-blue-400" />
-              <span className="text-xs text-slate-400">Mileage</span>
+          <div className="summary-card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <MapPin size={16} color="#60a5fa" />
+              <span style={{ fontSize: '12px', color: '#94a3b8' }}>Mileage</span>
             </div>
-            <div className="text-2xl font-semibold mono text-slate-100">{totals.mileage.toFixed(0)}</div>
-            <div className="text-xs text-slate-500 mt-1">miles</div>
+            <div className="mono" style={{ fontSize: '24px', fontWeight: '600', color: '#f1f5f9' }}>{totals.mileage.toFixed(0)}</div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>miles</div>
           </div>
           
-          <div className="glass rounded-xl p-4 border border-slate-700/50">
-            <div className="flex items-center gap-2 mb-2">
-              <DollarSign className="w-4 h-4 text-green-400" />
-              <span className="text-xs text-slate-400">Gas</span>
+          <div className="summary-card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <DollarSign size={16} color="#4ade80" />
+              <span style={{ fontSize: '12px', color: '#94a3b8' }}>Gas</span>
             </div>
-            <div className="text-2xl font-semibold mono text-slate-100">${totals.gasExpense.toFixed(0)}</div>
-            <div className="text-xs text-slate-500 mt-1">spent</div>
+            <div className="mono" style={{ fontSize: '24px', fontWeight: '600', color: '#f1f5f9' }}>${totals.gasExpense.toFixed(0)}</div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>spent</div>
           </div>
           
-          <div className="glass rounded-xl p-4 border border-slate-700/50">
-            <div className="flex items-center gap-2 mb-2">
-              <FileText className="w-4 h-4 text-purple-400" />
-              <span className="text-xs text-slate-400">Other</span>
+          <div className="summary-card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <FileText size={16} color="#a78bfa" />
+              <span style={{ fontSize: '12px', color: '#94a3b8' }}>Other</span>
             </div>
-            <div className="text-2xl font-semibold mono text-slate-100">${totals.otherExpense.toFixed(0)}</div>
-            <div className="text-xs text-slate-500 mt-1">expenses</div>
+            <div className="mono" style={{ fontSize: '24px', fontWeight: '600', color: '#f1f5f9' }}>${totals.otherExpense.toFixed(0)}</div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>expenses</div>
           </div>
         </div>
       </div>
 
       {/* Entry Form */}
-      <div className="max-w-4xl mx-auto px-4 mt-6">
-        <div className="glass rounded-2xl p-6 border border-slate-700/50">
-          <h2 className="text-xl font-semibold mb-6 text-amber-400 flex items-center gap-2">
-            <Plus className="w-5 h-5" />
+      <div style={{ maxWidth: '896px', margin: '24px auto 0', padding: '0 16px' }}>
+        <div className="glass" style={{ borderRadius: '16px', padding: '24px' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '24px', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Plus size={20} />
             New Entry
           </h2>
           
-          <div className="space-y-4">
-            {/* Date */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
-              <label className="block text-sm font-medium mb-2 text-slate-300 flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: '#cbd5e1' }}>
+                <Calendar size={16} />
                 Date
               </label>
               <input
                 type="date"
                 value={currentEntry.date}
                 onChange={(e) => setCurrentEntry({ ...currentEntry, date: e.target.value })}
-                className="w-full px-4 py-3 rounded-lg input-field text-slate-100"
+                className="input-field"
               />
             </div>
 
-            {/* Hours */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
               <div>
-                <label className="block text-sm font-medium mb-2 text-slate-300">Standard Hours</label>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: '#cbd5e1' }}>Standard Hours</label>
                 <input
                   type="number"
                   step="0.5"
                   value={currentEntry.standardHours}
                   onChange={(e) => setCurrentEntry({ ...currentEntry, standardHours: e.target.value })}
-                  className="w-full px-4 py-3 rounded-lg input-field text-slate-100"
+                  className="input-field"
                   placeholder="8.0"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2 text-slate-300">Overtime Hours</label>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: '#cbd5e1' }}>Overtime Hours</label>
                 <input
                   type="number"
                   step="0.5"
                   value={currentEntry.overtimeHours}
                   onChange={(e) => setCurrentEntry({ ...currentEntry, overtimeHours: e.target.value })}
-                  className="w-full px-4 py-3 rounded-lg input-field text-slate-100"
+                  className="input-field"
                   placeholder="2.0"
                 />
               </div>
             </div>
 
-            {/* Expenses */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
               <div>
-                <label className="block text-sm font-medium mb-2 text-slate-300 flex items-center gap-2">
-                  <MapPin className="w-4 h-4" />
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: '#cbd5e1' }}>
+                  <MapPin size={16} />
                   Mileage (miles)
                 </label>
                 <input
@@ -504,13 +564,13 @@ export default function ContractorTracker() {
                   step="0.1"
                   value={currentEntry.mileage}
                   onChange={(e) => setCurrentEntry({ ...currentEntry, mileage: e.target.value })}
-                  className="w-full px-4 py-3 rounded-lg input-field text-slate-100"
+                  className="input-field"
                   placeholder="45.2"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2 text-slate-300 flex items-center gap-2">
-                  <DollarSign className="w-4 h-4" />
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: '#cbd5e1' }}>
+                  <DollarSign size={16} />
                   Gas Expense
                 </label>
                 <input
@@ -518,52 +578,66 @@ export default function ContractorTracker() {
                   step="0.01"
                   value={currentEntry.gasExpense}
                   onChange={(e) => setCurrentEntry({ ...currentEntry, gasExpense: e.target.value })}
-                  className="w-full px-4 py-3 rounded-lg input-field text-slate-100"
+                  className="input-field"
                   placeholder="52.30"
                 />
               </div>
             </div>
 
-            {/* Other Expenses */}
             <div>
-              <label className="block text-sm font-medium mb-2 text-slate-300">Other Expense</label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: '#cbd5e1' }}>Other Expense</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
                 <input
                   type="number"
                   step="0.01"
                   value={currentEntry.otherExpense}
                   onChange={(e) => setCurrentEntry({ ...currentEntry, otherExpense: e.target.value })}
-                  className="w-full px-4 py-3 rounded-lg input-field text-slate-100"
+                  className="input-field"
                   placeholder="Amount"
                 />
                 <input
                   type="text"
                   value={currentEntry.expenseDescription}
                   onChange={(e) => setCurrentEntry({ ...currentEntry, expenseDescription: e.target.value })}
-                  className="w-full px-4 py-3 rounded-lg input-field text-slate-100"
+                  className="input-field"
                   placeholder="Description (e.g., Tools, Materials)"
                 />
               </div>
             </div>
 
-            {/* Receipt Upload */}
             <div>
-              <label className="block text-sm font-medium mb-2 text-slate-300 flex items-center gap-2">
-                <Camera className="w-4 h-4" />
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: '#cbd5e1' }}>
+                <Camera size={16} />
                 Receipt Image
               </label>
               <input
                 type="file"
                 accept="image/*"
                 onChange={handleImageUpload}
-                className="w-full px-4 py-3 rounded-lg input-field text-slate-100 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-amber-400 file:text-slate-900 hover:file:bg-amber-300 file:cursor-pointer"
+                className="input-field"
+                style={{ padding: '12px' }}
               />
               {currentEntry.receiptImage && (
-                <div className="mt-3 relative inline-block">
-                  <img src={currentEntry.receiptImage} alt="Receipt" className="max-w-full h-32 rounded-lg border border-slate-700" />
+                <div style={{ marginTop: '12px', position: 'relative', display: 'inline-block' }}>
+                  <img src={currentEntry.receiptImage} alt="Receipt" style={{ maxWidth: '100%', height: '128px', borderRadius: '8px', border: '1px solid #334155' }} />
                   <button
                     onClick={() => setCurrentEntry({ ...currentEntry, receiptImage: null })}
-                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
+                    style={{
+                      position: 'absolute',
+                      top: '-8px',
+                      right: '-8px',
+                      background: '#ef4444',
+                      color: 'white',
+                      borderRadius: '50%',
+                      width: '24px',
+                      height: '24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '12px',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
                   >
                     ×
                   </button>
@@ -571,23 +645,19 @@ export default function ContractorTracker() {
               )}
             </div>
 
-            {/* Notes */}
             <div>
-              <label className="block text-sm font-medium mb-2 text-slate-300">Notes</label>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: '#cbd5e1' }}>Notes</label>
               <textarea
                 value={currentEntry.notes}
                 onChange={(e) => setCurrentEntry({ ...currentEntry, notes: e.target.value })}
-                className="w-full px-4 py-3 rounded-lg input-field text-slate-100 h-24 resize-none"
+                className="input-field"
+                style={{ height: '96px', resize: 'none' }}
                 placeholder="Additional notes about this entry..."
               />
             </div>
 
-            {/* Add Button */}
-            <button
-              onClick={addEntry}
-              className="w-full btn-primary text-slate-900 font-semibold py-4 rounded-xl flex items-center justify-center gap-2"
-            >
-              <Plus className="w-5 h-5" />
+            <button onClick={addEntry} className="btn-primary" style={{ width: '100%' }}>
+              <Plus size={20} />
               Add Entry
             </button>
           </div>
@@ -596,66 +666,73 @@ export default function ContractorTracker() {
 
       {/* Entries List */}
       {entries.length > 0 && (
-        <div className="max-w-4xl mx-auto px-4 mt-6">
-          <div className="glass rounded-2xl p-6 border border-slate-700/50">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-amber-400">Recent Entries</h2>
-              <button
-                onClick={() => generatePDF(entries, contractorInfo)}
-                className="btn-primary px-6 py-3 rounded-xl text-slate-900 font-semibold flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" />
+        <div style={{ maxWidth: '896px', margin: '24px auto 0', padding: '0 16px' }}>
+          <div className="glass" style={{ borderRadius: '16px', padding: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#fbbf24' }}>Recent Entries</h2>
+              <button onClick={() => generatePDF(entries, contractorInfo)} className="btn-primary" style={{ padding: '12px 24px' }}>
+                <Download size={16} />
                 Export PDF
               </button>
             </div>
             
-            <div className="space-y-3">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {[...entries].reverse().map((entry) => (
-                <div key={entry.id} className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50 animate-slide-up hover:bg-slate-800/70 transition-all">
-                  <div className="flex items-start justify-between mb-3">
+                <div key={entry.id} className="entry-card">
+                  <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', marginBottom: '12px' }}>
                     <div>
-                      <div className="font-semibold text-amber-400 mono">{new Date(entry.date).toLocaleDateString()}</div>
-                      <div className="text-xs text-slate-500 mt-1">
+                      <div className="mono" style={{ fontWeight: '600', color: '#fbbf24' }}>{new Date(entry.date).toLocaleDateString()}</div>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                         Added {new Date(entry.timestamp).toLocaleString()}
                       </div>
                     </div>
                     <button
                       onClick={() => deleteEntry(entry.id)}
-                      className="text-red-400 hover:text-red-300 p-2 hover:bg-red-400/10 rounded-lg transition-all"
+                      style={{
+                        color: '#f87171',
+                        background: 'transparent',
+                        border: 'none',
+                        padding: '8px',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseEnter={(e) => e.target.style.background = 'rgba(248, 113, 113, 0.1)'}
+                      onMouseLeave={(e) => e.target.style.background = 'transparent'}
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 size={16} />
                     </button>
                   </div>
                   
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px', fontSize: '14px' }}>
                     {entry.standardHours && (
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-amber-400" />
-                        <span className="text-slate-300">{entry.standardHours}h standard</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Clock size={16} color="#fbbf24" />
+                        <span style={{ color: '#cbd5e1' }}>{entry.standardHours}h standard</span>
                       </div>
                     )}
                     {entry.overtimeHours && (
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-orange-400" />
-                        <span className="text-slate-300">{entry.overtimeHours}h OT</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Clock size={16} color="#fb923c" />
+                        <span style={{ color: '#cbd5e1' }}>{entry.overtimeHours}h OT</span>
                       </div>
                     )}
                     {entry.mileage && (
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-4 h-4 text-blue-400" />
-                        <span className="text-slate-300">{entry.mileage} mi</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <MapPin size={16} color="#60a5fa" />
+                        <span style={{ color: '#cbd5e1' }}>{entry.mileage} mi</span>
                       </div>
                     )}
                     {entry.gasExpense && (
-                      <div className="flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 text-green-400" />
-                        <span className="text-slate-300">${parseFloat(entry.gasExpense).toFixed(2)} gas</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <DollarSign size={16} color="#4ade80" />
+                        <span style={{ color: '#cbd5e1' }}>${parseFloat(entry.gasExpense).toFixed(2)} gas</span>
                       </div>
                     )}
                     {entry.otherExpense && (
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-purple-400" />
-                        <span className="text-slate-300">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FileText size={16} color="#a78bfa" />
+                        <span style={{ color: '#cbd5e1' }}>
                           ${parseFloat(entry.otherExpense).toFixed(2)}
                           {entry.expenseDescription && ` - ${entry.expenseDescription}`}
                         </span>
@@ -664,15 +741,20 @@ export default function ContractorTracker() {
                   </div>
                   
                   {entry.notes && (
-                    <div className="mt-3 text-sm text-slate-400 italic bg-slate-900/50 p-3 rounded-lg">
+                    <div style={{ marginTop: '12px', fontSize: '14px', color: '#94a3b8', fontStyle: 'italic', background: 'rgba(15, 23, 42, 0.5)', padding: '12px', borderRadius: '8px' }}>
                       {entry.notes}
                     </div>
                   )}
                   
                   {entry.receiptImage && (
-                    <div className="mt-3">
-                      <img src={entry.receiptImage} alt="Receipt" className="max-w-full h-32 rounded-lg border border-slate-700 cursor-pointer hover:opacity-80 transition-opacity" 
+                    <div style={{ marginTop: '12px' }}>
+                      <img 
+                        src={entry.receiptImage} 
+                        alt="Receipt" 
+                        style={{ maxWidth: '100%', height: '128px', borderRadius: '8px', border: '1px solid #334155', cursor: 'pointer', transition: 'opacity 0.3s' }}
                         onClick={() => window.open(entry.receiptImage, '_blank')}
+                        onMouseEnter={(e) => e.target.style.opacity = '0.8'}
+                        onMouseLeave={(e) => e.target.style.opacity = '1'}
                       />
                     </div>
                   )}
@@ -684,11 +766,11 @@ export default function ContractorTracker() {
       )}
 
       {entries.length === 0 && (
-        <div className="max-w-4xl mx-auto px-4 mt-12 text-center">
-          <div className="glass rounded-2xl p-12 border border-slate-700/50">
-            <FileText className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-slate-400 mb-2">No Entries Yet</h3>
-            <p className="text-slate-500">Add your first entry to start tracking your contractor work</p>
+        <div style={{ maxWidth: '896px', margin: '48px auto 0', padding: '0 16px', textAlign: 'center' }}>
+          <div className="glass" style={{ borderRadius: '16px', padding: '48px' }}>
+            <FileText size={64} color="#475569" style={{ margin: '0 auto 16px' }} />
+            <h3 style={{ fontSize: '20px', fontWeight: '600', color: '#94a3b8', marginBottom: '8px' }}>No Entries Yet</h3>
+            <p style={{ color: '#64748b' }}>Add your first entry to start tracking your contractor work</p>
           </div>
         </div>
       )}
