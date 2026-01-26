@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, DollarSign, MapPin, Camera, FileText, Plus, Trash2, Download } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 
+// Helper function to format dates correctly (avoid timezone issues)
+const formatDate = (dateString) => {
+  const [year, month, day] = dateString.split('-');
+  return new Date(year, month - 1, day).toLocaleDateString();
+};
+
 // PDF generation function
 const generatePDF = (entries, contractorInfo) => {
   const doc = new jsPDF();
@@ -97,7 +103,8 @@ const generatePDF = (entries, contractorInfo) => {
     doc.setTextColor(26, 32, 44);
     doc.setFontSize(11);
     doc.setFont(undefined, 'bold');
-    doc.text(`${new Date(entry.date).toLocaleDateString()}`, margin, yPos + 3);
+    // Use formatDate helper to avoid timezone issues
+    doc.text(formatDate(entry.date), margin, yPos + 3);
     
     doc.setFontSize(9);
     doc.setFont(undefined, 'normal');
@@ -328,7 +335,7 @@ export default function ContractorTracker() {
           padding: 12px 16px;
           border-radius: 8px;
           color: #f1f5f9;
-          font-size: 14px;
+          fontSize: 14px;
           width: 100%;
         }
         
@@ -347,7 +354,7 @@ export default function ContractorTracker() {
           cursor: pointer;
           padding: 16px;
           border-radius: 12px;
-          font-size: 16px;
+          fontSize: 16px;
           display: flex;
           align-items: center;
           justifyContent: center;
@@ -680,7 +687,7 @@ export default function ContractorTracker() {
                 <div key={entry.id} className="entry-card">
                   <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', marginBottom: '12px' }}>
                     <div>
-                      <div className="mono" style={{ fontWeight: '600', color: '#fbbf24' }}>{new Date(entry.date).toLocaleDateString()}</div>
+                      <div className="mono" style={{ fontWeight: '600', color: '#fbbf24' }}>{formatDate(entry.date)}</div>
                       <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                         Added {new Date(entry.timestamp).toLocaleString()}
                       </div>
