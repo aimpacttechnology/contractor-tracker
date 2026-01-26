@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, DollarSign, MapPin, Camera, FileText, Plus, Trash2, Download } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 
-// PDF generation using jsPDF
-const generatePDF = async (entries, contractorInfo) => {
-  const { jsPDF } = await import('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
-  
+// PDF generation function
+const generatePDF = (entries, contractorInfo) => {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
   const pageHeight = doc.internal.pageSize.height;
@@ -351,7 +350,7 @@ export default function ContractorTracker() {
           font-size: 16px;
           display: flex;
           align-items: center;
-          justify-content: center;
+          justifyContent: center;
           gap: 8px;
         }
         
