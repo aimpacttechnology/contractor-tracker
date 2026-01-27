@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, DollarSign, MapPin, Camera, FileText, Plus, Trash2, Download, Edit2, Filter, X, Sun, Moon, FileSpreadsheet, Receipt } from 'lucide-react';
+import { Calendar, Clock, DollarSign, MapPin, Camera, FileText, Plus, Trash2, Download, Edit2, Filter, X, Sun, Moon, FileSpreadsheet, Car } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 
-// Helper function to format dates correctly (avoid timezone issues)
+// IRS Mileage Rate for 2026
+const IRS_MILEAGE_RATE = 0.725;
+
+// Helper function to format dates correctly
 const formatDate = (dateString) => {
   const [year, month, day] = dateString.split('-');
   return new Date(year, month - 1, day).toLocaleDateString();
@@ -10,25 +13,35 @@ const formatDate = (dateString) => {
 
 // CSV Export Function
 const exportToCSV = (entries, contractorInfo) => {
-  const headers = ['Date', 'Project', 'Standard Hours', 'Overtime Hours', 'Mileage', 'Gas Expense', 'Other Expense', 'Expense Category', 'Expense Description', 'Notes'];
+  const headers = ['Date', 'Project', 'Driving Hours', 'Standard Hours', 'Overtime Hours', 'Night Hours', 'Night OT Hours', 'Weekend Hours', 'Weekend OT Hours', 'Mileage', 'Mileage Payment', 'Per Diem', 'Other Expense', 'Expense Category', 'Expense Description', 'Notes'];
   
-  const rows = entries.map(entry => [
-    formatDate(entry.date),
-    entry.projectName || '',
-    entry.standardHours || '0',
-    entry.overtimeHours || '0',
-    entry.mileage || '0',
-    entry.gasExpense || '0',
-    entry.otherExpense || '0',
-    entry.expenseCategory || '',
-    entry.expenseDescription || '',
-    entry.notes || ''
-  ]);
+  const rows = entries.map(entry => {
+    const mileagePayment = (parseFloat(entry.mileage) || 0) * IRS_MILEAGE_RATE;
+    return [
+      formatDate(entry.date),
+      entry.projectName || '',
+      entry.drivingHours || '0',
+      entry.standardHours || '0',
+      entry.overtimeHours || '0',
+      entry.nightHours || '0',
+      entry.nightOvertimeHours || '0',
+      entry.weekendHours || '0',
+      entry.weekendOvertimeHours || '0',
+      entry.mileage || '0',
+      mileagePayment.toFixed(2),
+      entry.perDiem || '0',
+      entry.otherExpense || '0',
+      entry.expenseCategory || '',
+      entry.expenseDescription || '',
+      entry.notes || ''
+    ];
+  });
 
   const csvContent = [
     [`Contractor: ${contractorInfo.name || 'N/A'}`],
     [`Business: ${contractorInfo.business || 'N/A'}`],
     [`Client: ${contractorInfo.clientCompany || 'N/A'}`],
+    [`IRS Mileage Rate: $${IRS_MILEAGE_RATE}/mile`],
     [`Generated: ${new Date().toLocaleDateString()}`],
     [],
     headers,
@@ -43,7 +56,7 @@ const exportToCSV = (entries, contractorInfo) => {
   link.click();
 };
 
-// PDF generation function
+// PDF generation
 const generatePDF = (entries, contractorInfo, filterProject = null) => {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
@@ -93,32 +106,28 @@ const generatePDF = (entries, contractorInfo, filterProject = null) => {
       doc.text(`Client: ${contractorInfo.clientCompany}`, margin, yPos);
       yPos += 6;
     }
-    if (contractorInfo.standardRate) {
-      doc.text(`Standard Rate: $${contractorInfo.standardRate}/hr`, margin, yPos);
-      yPos += 6;
-    }
-    if (contractorInfo.overtimeRate) {
-      doc.text(`Overtime Rate: $${contractorInfo.overtimeRate}/hr`, margin, yPos);
-      yPos += 6;
-    }
-    yPos += 5;
+    doc.text(`IRS Mileage Rate: $${IRS_MILEAGE_RATE}/mile`, margin, yPos);
+    yPos += 10;
   }
 
   const totals = filteredEntries.reduce((acc, entry) => ({
+    drivingHours: acc.drivingHours + (parseFloat(entry.drivingHours) || 0),
     standardHours: acc.standardHours + (parseFloat(entry.standardHours) || 0),
     overtimeHours: acc.overtimeHours + (parseFloat(entry.overtimeHours) || 0),
+    nightHours: acc.nightHours + (parseFloat(entry.nightHours) || 0),
+    nightOvertimeHours: acc.nightOvertimeHours + (parseFloat(entry.nightOvertimeHours) || 0),
+    weekendHours: acc.weekendHours + (parseFloat(entry.weekendHours) || 0),
+    weekendOvertimeHours: acc.weekendOvertimeHours + (parseFloat(entry.weekendOvertimeHours) || 0),
     mileage: acc.mileage + (parseFloat(entry.mileage) || 0),
-    gasExpense: acc.gasExpense + (parseFloat(entry.gasExpense) || 0),
+    perDiem: acc.perDiem + (parseFloat(entry.perDiem) || 0),
     otherExpense: acc.otherExpense + (parseFloat(entry.otherExpense) || 0)
-  }), { standardHours: 0, overtimeHours: 0, mileage: 0, gasExpense: 0, otherExpense: 0 });
+  }), { drivingHours: 0, standardHours: 0, overtimeHours: 0, nightHours: 0, nightOvertimeHours: 0, weekendHours: 0, weekendOvertimeHours: 0, mileage: 0, perDiem: 0, otherExpense: 0 });
 
-  const standardEarnings = totals.standardHours * (parseFloat(contractorInfo.standardRate) || 0);
-  const overtimeEarnings = totals.overtimeHours * (parseFloat(contractorInfo.overtimeRate) || 0);
-  const totalEarnings = standardEarnings + overtimeEarnings;
+  const totalHours = totals.drivingHours + totals.standardHours + totals.overtimeHours + totals.nightHours + totals.nightOvertimeHours + totals.weekendHours + totals.weekendOvertimeHours;
+  const mileagePayment = totals.mileage * IRS_MILEAGE_RATE;
 
   doc.setFillColor(240, 242, 245);
-  const summaryHeight = contractorInfo.standardRate ? 75 : 55;
-  doc.rect(margin - 5, yPos - 5, pageWidth - 2 * margin + 10, summaryHeight, 'F');
+  doc.rect(margin - 5, yPos - 5, pageWidth - 2 * margin + 10, 75, 'F');
 
   doc.setTextColor(26, 32, 44);
   doc.setFontSize(12);
@@ -128,28 +137,31 @@ const generatePDF = (entries, contractorInfo, filterProject = null) => {
 
   doc.setFontSize(10);
   doc.setFont(undefined, 'normal');
-  doc.text(`Total Standard Hours: ${totals.standardHours.toFixed(2)}`, margin, yPos);
-  yPos += 7;
-  doc.text(`Total Overtime Hours: ${totals.overtimeHours.toFixed(2)}`, margin, yPos);
-  yPos += 7;
-  
-  if (contractorInfo.standardRate || contractorInfo.overtimeRate) {
-    doc.setFont(undefined, 'bold');
-    doc.text(`Total Earnings: $${totalEarnings.toFixed(2)}`, margin, yPos);
-    doc.setFont(undefined, 'normal');
-    yPos += 10;
-  }
+  doc.text(`Total Hours: ${totalHours.toFixed(2)}`, margin, yPos);
+  yPos += 6;
+  doc.text(`  Driving: ${totals.drivingHours.toFixed(2)}h | Standard: ${totals.standardHours.toFixed(2)}h | Overtime: ${totals.overtimeHours.toFixed(2)}h`, margin + 3, yPos);
+  yPos += 6;
+  doc.text(`  Night: ${totals.nightHours.toFixed(2)}h | Night OT: ${totals.nightOvertimeHours.toFixed(2)}h`, margin + 3, yPos);
+  yPos += 6;
+  doc.text(`  Weekend: ${totals.weekendHours.toFixed(2)}h | Weekend OT: ${totals.weekendOvertimeHours.toFixed(2)}h`, margin + 3, yPos);
+  yPos += 8;
   
   doc.text(`Total Mileage: ${totals.mileage.toFixed(2)} miles`, margin, yPos);
-  yPos += 7;
-  doc.text(`Total Gas Expense: $${totals.gasExpense.toFixed(2)}`, margin, yPos);
-  yPos += 7;
-  doc.text(`Total Other Expenses: $${totals.otherExpense.toFixed(2)}`, margin, yPos);
-  yPos += 7;
-  
-  const totalExpenses = totals.gasExpense + totals.otherExpense;
+  yPos += 6;
   doc.setFont(undefined, 'bold');
-  doc.text(`TOTAL EXPENSES: $${totalExpenses.toFixed(2)}`, margin, yPos);
+  doc.text(`Mileage Payment ($${IRS_MILEAGE_RATE}/mi): $${mileagePayment.toFixed(2)}`, margin, yPos);
+  doc.setFont(undefined, 'normal');
+  yPos += 8;
+  
+  doc.text(`Total Per Diem: $${totals.perDiem.toFixed(2)}`, margin, yPos);
+  yPos += 6;
+  doc.text(`Total Other Expenses: $${totals.otherExpense.toFixed(2)}`, margin, yPos);
+  yPos += 8;
+  
+  const totalReimbursements = mileagePayment + totals.perDiem + totals.otherExpense;
+  doc.setFont(undefined, 'bold');
+  doc.setFontSize(11);
+  doc.text(`TOTAL REIMBURSEMENTS: $${totalReimbursements.toFixed(2)}`, margin, yPos);
   yPos += 15;
 
   doc.setFontSize(12);
@@ -158,14 +170,13 @@ const generatePDF = (entries, contractorInfo, filterProject = null) => {
   yPos += 10;
 
   filteredEntries.sort((a, b) => new Date(a.date) - new Date(b.date)).forEach((entry) => {
-    if (yPos > pageHeight - 50) {
+    if (yPos > pageHeight - 60) {
       doc.addPage();
       yPos = margin;
     }
 
     doc.setFillColor(250, 250, 251);
-    const entryHeight = 60;
-    doc.rect(margin - 5, yPos - 5, pageWidth - 2 * margin + 10, entryHeight, 'F');
+    doc.rect(margin - 5, yPos - 5, pageWidth - 2 * margin + 10, 60, 'F');
 
     doc.setTextColor(26, 32, 44);
     doc.setFontSize(11);
@@ -181,26 +192,32 @@ const generatePDF = (entries, contractorInfo, filterProject = null) => {
     doc.setFont(undefined, 'normal');
     yPos += 10;
 
-    if (entry.standardHours || entry.overtimeHours) {
-      const entryEarnings = (parseFloat(entry.standardHours) || 0) * (parseFloat(contractorInfo.standardRate) || 0) +
-                           (parseFloat(entry.overtimeHours) || 0) * (parseFloat(contractorInfo.overtimeRate) || 0);
-      doc.text(`Hours: ${entry.standardHours || 0} standard, ${entry.overtimeHours || 0} overtime`, margin + 5, yPos);
-      if (contractorInfo.standardRate) {
-        doc.text(`($${entryEarnings.toFixed(2)})`, margin + 100, yPos);
-      }
+    const hours = [];
+    if (entry.drivingHours) hours.push(`${entry.drivingHours}h driving`);
+    if (entry.standardHours) hours.push(`${entry.standardHours}h standard`);
+    if (entry.overtimeHours) hours.push(`${entry.overtimeHours}h OT`);
+    if (entry.nightHours) hours.push(`${entry.nightHours}h night`);
+    if (entry.nightOvertimeHours) hours.push(`${entry.nightOvertimeHours}h night OT`);
+    if (entry.weekendHours) hours.push(`${entry.weekendHours}h weekend`);
+    if (entry.weekendOvertimeHours) hours.push(`${entry.weekendOvertimeHours}h weekend OT`);
+    
+    if (hours.length > 0) {
+      doc.text(`Hours: ${hours.join(', ')}`, margin + 5, yPos);
       yPos += 6;
     }
+    
     if (entry.mileage) {
-      doc.text(`Mileage: ${entry.mileage} miles`, margin + 5, yPos);
+      const mileagePay = parseFloat(entry.mileage) * IRS_MILEAGE_RATE;
+      doc.text(`Mileage: ${entry.mileage} miles ($${mileagePay.toFixed(2)})`, margin + 5, yPos);
       yPos += 6;
     }
-    if (entry.gasExpense) {
-      doc.text(`Gas: $${parseFloat(entry.gasExpense).toFixed(2)}`, margin + 5, yPos);
+    if (entry.perDiem) {
+      doc.text(`Per Diem: $${parseFloat(entry.perDiem).toFixed(2)}`, margin + 5, yPos);
       yPos += 6;
     }
     if (entry.otherExpense) {
       const categoryText = entry.expenseCategory ? ` (${entry.expenseCategory})` : '';
-      doc.text(`Other Expense: $${parseFloat(entry.otherExpense).toFixed(2)}${categoryText}`, margin + 5, yPos);
+      doc.text(`Expense: $${parseFloat(entry.otherExpense).toFixed(2)}${categoryText}`, margin + 5, yPos);
       if (entry.expenseDescription) {
         doc.text(` - ${entry.expenseDescription}`, margin + 50, yPos);
       }
@@ -224,146 +241,20 @@ const generatePDF = (entries, contractorInfo, filterProject = null) => {
   doc.save(fileName);
 };
 
-// Invoice Generator
-const generateInvoice = (entries, contractorInfo, invoiceInfo) => {
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.width;
-  const margin = 20;
-  let yPos = margin;
-
-  // Header
-  doc.setFillColor(26, 32, 44);
-  doc.rect(0, 0, pageWidth, 50, 'F');
-  
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(28);
-  doc.setFont(undefined, 'bold');
-  doc.text('INVOICE', margin, 30);
-  
-  doc.setFontSize(10);
-  doc.setFont(undefined, 'normal');
-  doc.text(`Invoice #: ${invoiceInfo.invoiceNumber || 'INV-' + Date.now()}`, pageWidth - margin - 50, 25);
-  doc.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth - margin - 50, 35);
-
-  yPos = 65;
-
-  // From/To
-  doc.setTextColor(26, 32, 44);
-  doc.setFontSize(10);
-  doc.setFont(undefined, 'bold');
-  doc.text('FROM:', margin, yPos);
-  doc.text('BILL TO:', pageWidth / 2 + 10, yPos);
-  yPos += 8;
-
-  doc.setFont(undefined, 'normal');
-  doc.setFontSize(9);
-  
-  // From section
-  if (contractorInfo.name) {
-    doc.text(contractorInfo.name, margin, yPos);
-    yPos += 5;
-  }
-  if (contractorInfo.business) {
-    doc.text(contractorInfo.business, margin, yPos);
-    yPos += 5;
-  }
-
-  // To section
-  let yPosRight = 73;
-  if (invoiceInfo.clientName) {
-    doc.text(invoiceInfo.clientName, pageWidth / 2 + 10, yPosRight);
-    yPosRight += 5;
-  }
-  if (invoiceInfo.clientEmail) {
-    doc.text(invoiceInfo.clientEmail, pageWidth / 2 + 10, yPosRight);
-    yPosRight += 5;
-  }
-
-  yPos = Math.max(yPos, yPosRight) + 10;
-
-  // Line items
-  doc.setFillColor(240, 242, 245);
-  doc.rect(margin - 5, yPos - 5, pageWidth - 2 * margin + 10, 12, 'F');
-  
-  doc.setFont(undefined, 'bold');
-  doc.text('Description', margin, yPos + 3);
-  doc.text('Hours', pageWidth - 80, yPos + 3);
-  doc.text('Rate', pageWidth - 55, yPos + 3);
-  doc.text('Amount', pageWidth - margin - 20, yPos + 3);
-  yPos += 15;
-
-  doc.setFont(undefined, 'normal');
-
-  let subtotal = 0;
-
-  const totals = entries.reduce((acc, entry) => ({
-    standardHours: acc.standardHours + (parseFloat(entry.standardHours) || 0),
-    overtimeHours: acc.overtimeHours + (parseFloat(entry.overtimeHours) || 0)
-  }), { standardHours: 0, overtimeHours: 0 });
-
-  if (totals.standardHours > 0) {
-    const amount = totals.standardHours * (parseFloat(contractorInfo.standardRate) || 0);
-    doc.text(`Standard Labor`, margin, yPos);
-    doc.text(`${totals.standardHours.toFixed(2)}`, pageWidth - 80, yPos);
-    doc.text(`$${contractorInfo.standardRate || '0'}`, pageWidth - 55, yPos);
-    doc.text(`$${amount.toFixed(2)}`, pageWidth - margin - 30, yPos);
-    subtotal += amount;
-    yPos += 8;
-  }
-
-  if (totals.overtimeHours > 0) {
-    const amount = totals.overtimeHours * (parseFloat(contractorInfo.overtimeRate) || 0);
-    doc.text(`Overtime Labor`, margin, yPos);
-    doc.text(`${totals.overtimeHours.toFixed(2)}`, pageWidth - 80, yPos);
-    doc.text(`$${contractorInfo.overtimeRate || '0'}`, pageWidth - 55, yPos);
-    doc.text(`$${amount.toFixed(2)}`, pageWidth - margin - 30, yPos);
-    subtotal += amount;
-    yPos += 8;
-  }
-
-  // Expenses
-  const totalExpenses = entries.reduce((sum, entry) => 
-    sum + (parseFloat(entry.gasExpense) || 0) + (parseFloat(entry.otherExpense) || 0), 0
-  );
-
-  if (totalExpenses > 0) {
-    doc.text(`Reimbursable Expenses`, margin, yPos);
-    doc.text(`$${totalExpenses.toFixed(2)}`, pageWidth - margin - 30, yPos);
-    subtotal += totalExpenses;
-    yPos += 12;
-  }
-
-  // Totals
-  doc.setDrawColor(200, 200, 200);
-  doc.line(margin, yPos, pageWidth - margin, yPos);
-  yPos += 10;
-
-  doc.setFont(undefined, 'bold');
-  doc.setFontSize(12);
-  doc.text('TOTAL DUE:', pageWidth - 80, yPos);
-  doc.text(`$${subtotal.toFixed(2)}`, pageWidth - margin - 30, yPos);
-
-  // Payment terms
-  if (invoiceInfo.paymentTerms) {
-    yPos += 15;
-    doc.setFontSize(9);
-    doc.setFont(undefined, 'normal');
-    doc.text(`Payment Terms: ${invoiceInfo.paymentTerms}`, margin, yPos);
-  }
-
-  const fileName = `invoice_${invoiceInfo.invoiceNumber || Date.now()}.pdf`;
-  doc.save(fileName);
-};
-
 export default function ContractorTracker() {
   const [entries, setEntries] = useState([]);
   const [currentEntry, setCurrentEntry] = useState({
     date: new Date().toISOString().split('T')[0],
     projectName: '',
+    drivingHours: '',
     standardHours: '',
     overtimeHours: '',
+    nightHours: '',
+    nightOvertimeHours: '',
+    weekendHours: '',
+    weekendOvertimeHours: '',
     mileage: '',
-    gasExpense: '',
+    perDiem: '',
     otherExpense: '',
     expenseCategory: '',
     expenseDescription: '',
@@ -373,12 +264,10 @@ export default function ContractorTracker() {
   const [contractorInfo, setContractorInfo] = useState({
     name: '',
     business: '',
-    clientCompany: '',
-    standardRate: '',
-    overtimeRate: ''
+    clientCompany: ''
   });
   const [expenseCategories, setExpenseCategories] = useState([
-    'Materials', 'Tools', 'Permits', 'Subcontractors', 'Equipment Rental', 'Other'
+    'Materials', 'Tools', 'Permits', 'Subcontractors', 'Equipment Rental', 'Lodging', 'Meals', 'Other'
   ]);
   const [showInfo, setShowInfo] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -387,13 +276,6 @@ export default function ContractorTracker() {
   const [dateFilter, setDateFilter] = useState('all');
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
   const [theme, setTheme] = useState('dark');
-  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-  const [invoiceInfo, setInvoiceInfo] = useState({
-    invoiceNumber: '',
-    clientName: '',
-    clientEmail: '',
-    paymentTerms: 'Net 30'
-  });
 
   useEffect(() => {
     try {
@@ -485,10 +367,15 @@ export default function ContractorTracker() {
     setCurrentEntry({
       date: new Date().toISOString().split('T')[0],
       projectName: currentEntry.projectName,
+      drivingHours: '',
       standardHours: '',
       overtimeHours: '',
+      nightHours: '',
+      nightOvertimeHours: '',
+      weekendHours: '',
+      weekendOvertimeHours: '',
       mileage: '',
-      gasExpense: '',
+      perDiem: '',
       otherExpense: '',
       expenseCategory: '',
       expenseDescription: '',
@@ -569,15 +456,20 @@ export default function ContractorTracker() {
     : getDateFilteredEntries();
 
   const totals = filteredEntries.reduce((acc, entry) => ({
+    drivingHours: acc.drivingHours + (parseFloat(entry.drivingHours) || 0),
     standardHours: acc.standardHours + (parseFloat(entry.standardHours) || 0),
     overtimeHours: acc.overtimeHours + (parseFloat(entry.overtimeHours) || 0),
+    nightHours: acc.nightHours + (parseFloat(entry.nightHours) || 0),
+    nightOvertimeHours: acc.nightOvertimeHours + (parseFloat(entry.nightOvertimeHours) || 0),
+    weekendHours: acc.weekendHours + (parseFloat(entry.weekendHours) || 0),
+    weekendOvertimeHours: acc.weekendOvertimeHours + (parseFloat(entry.weekendOvertimeHours) || 0),
     mileage: acc.mileage + (parseFloat(entry.mileage) || 0),
-    gasExpense: acc.gasExpense + (parseFloat(entry.gasExpense) || 0),
+    perDiem: acc.perDiem + (parseFloat(entry.perDiem) || 0),
     otherExpense: acc.otherExpense + (parseFloat(entry.otherExpense) || 0)
-  }), { standardHours: 0, overtimeHours: 0, mileage: 0, gasExpense: 0, otherExpense: 0 });
+  }), { drivingHours: 0, standardHours: 0, overtimeHours: 0, nightHours: 0, nightOvertimeHours: 0, weekendHours: 0, weekendOvertimeHours: 0, mileage: 0, perDiem: 0, otherExpense: 0 });
 
-  const totalEarnings = (totals.standardHours * (parseFloat(contractorInfo.standardRate) || 0)) +
-                        (totals.overtimeHours * (parseFloat(contractorInfo.overtimeRate) || 0));
+  const totalHours = totals.drivingHours + totals.standardHours + totals.overtimeHours + totals.nightHours + totals.nightOvertimeHours + totals.weekendHours + totals.weekendOvertimeHours;
+  const mileagePayment = totals.mileage * IRS_MILEAGE_RATE;
 
   if (isLoading) {
     return (
@@ -601,7 +493,6 @@ export default function ContractorTracker() {
   const entryFormContent = editingEntry || currentEntry;
   const isEditing = !!editingEntry;
 
-  // Theme colors
   const colors = theme === 'dark' ? {
     bg: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
     text: '#f1f5f9',
@@ -780,31 +671,6 @@ export default function ContractorTracker() {
         .filter-chip:hover {
           background: ${theme === 'dark' ? 'rgba(251, 191, 36, 0.3)' : 'rgba(245, 158, 11, 0.3)'};
         }
-
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.7);
-          display: flex;
-          align-items: center;
-          justifyContent: center;
-          z-index: 1000;
-          padding: 16px;
-        }
-
-        .modal-content {
-          background: ${theme === 'dark' ? '#1e293b' : '#ffffff'};
-          border-radius: 16px;
-          padding: 32px;
-          max-width: 500px;
-          width: 100%;
-          max-height: 90vh;
-          overflow-y: auto;
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-        }
       `}</style>
 
       {/* Header */}
@@ -816,7 +682,7 @@ export default function ContractorTracker() {
         background: colors.cardBg,
         backdropFilter: 'blur(12px)'
       }}>
-        <div style={{ maxWidth: '896px', margin: '0 auto', padding: '24px 16px' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
             <div>
               <h1 style={{ fontSize: '30px', fontWeight: '700', color: colors.accent, letterSpacing: '-0.5px', margin: 0 }}>
@@ -867,35 +733,33 @@ export default function ContractorTracker() {
         </div>
       </div>
 
-      {/* Contractor Info Panel */}
+      {/* Settings Panel */}
       {showInfo && (
-        <div style={{ maxWidth: '896px', margin: '24px auto 0', padding: '0 16px' }} className="animate-slide-up">
+        <div style={{ maxWidth: '1200px', margin: '24px auto 0', padding: '0 16px' }} className="animate-slide-up">
           <div className="glass" style={{ borderRadius: '16px', padding: '24px', border: `1px solid ${theme === 'dark' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(245, 158, 11, 0.3)'}` }}>
             <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '16px', color: colors.accent }}>Settings</h2>
             
             <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px', marginTop: '24px', color: colors.text }}>Contractor Information</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Your Name *</label>
-                  <input
-                    type="text"
-                    value={contractorInfo.name}
-                    onChange={(e) => updateContractorInfo('name', e.target.value)}
-                    className="input-field"
-                    placeholder="John Doe"
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Business Name</label>
-                  <input
-                    type="text"
-                    value={contractorInfo.business}
-                    onChange={(e) => updateContractorInfo('business', e.target.value)}
-                    className="input-field"
-                    placeholder="Doe Contracting LLC"
-                  />
-                </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Your Name *</label>
+                <input
+                  type="text"
+                  value={contractorInfo.name}
+                  onChange={(e) => updateContractorInfo('name', e.target.value)}
+                  className="input-field"
+                  placeholder="John Doe"
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Business Name</label>
+                <input
+                  type="text"
+                  value={contractorInfo.business}
+                  onChange={(e) => updateContractorInfo('business', e.target.value)}
+                  className="input-field"
+                  placeholder="Doe Contracting LLC"
+                />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Client/Company Name</label>
@@ -906,33 +770,6 @@ export default function ContractorTracker() {
                   className="input-field"
                   placeholder="ABC Manufacturing"
                 />
-                <p style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '6px' }}>
-                  The company/client you're currently working for
-                </p>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Standard Rate ($/hr)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={contractorInfo.standardRate}
-                    onChange={(e) => updateContractorInfo('standardRate', e.target.value)}
-                    className="input-field"
-                    placeholder="50.00"
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Overtime Rate ($/hr)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={contractorInfo.overtimeRate}
-                    onChange={(e) => updateContractorInfo('overtimeRate', e.target.value)}
-                    className="input-field"
-                    placeholder="75.00"
-                  />
-                </div>
               </div>
             </div>
 
@@ -959,7 +796,7 @@ export default function ContractorTracker() {
       )}
 
       {/* Date Range Filter */}
-      <div style={{ maxWidth: '896px', margin: '16px auto 0', padding: '0 16px' }}>
+      <div style={{ maxWidth: '1200px', margin: '16px auto 0', padding: '0 16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <Calendar size={16} color={colors.textSecondary} />
           <span style={{ fontSize: '14px', color: colors.textSecondary }}>Date Range:</span>
@@ -1003,7 +840,6 @@ export default function ContractorTracker() {
               onChange={(e) => setCustomDateRange({ ...customDateRange, start: e.target.value })}
               className="input-field"
               style={{ maxWidth: '200px' }}
-              placeholder="Start date"
             />
             <span style={{ alignSelf: 'center', color: colors.textSecondary }}>to</span>
             <input
@@ -1012,7 +848,6 @@ export default function ContractorTracker() {
               onChange={(e) => setCustomDateRange({ ...customDateRange, end: e.target.value })}
               className="input-field"
               style={{ maxWidth: '200px' }}
-              placeholder="End date"
             />
           </div>
         )}
@@ -1020,7 +855,7 @@ export default function ContractorTracker() {
 
       {/* Project Filter */}
       {getUniqueProjects().length > 0 && (
-        <div style={{ maxWidth: '896px', margin: '12px auto 0', padding: '0 16px' }}>
+        <div style={{ maxWidth: '1200px', margin: '12px auto 0', padding: '0 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <Filter size={16} color={colors.textSecondary} />
             <span style={{ fontSize: '14px', color: colors.textSecondary }}>Projects:</span>
@@ -1049,70 +884,77 @@ export default function ContractorTracker() {
       )}
 
       {/* Summary Cards */}
-      <div style={{ maxWidth: '896px', margin: '24px auto 0', padding: '0 16px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
-          {contractorInfo.standardRate && (
-            <div className="summary-card">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                <DollarSign size={16} color="#10b981" />
-                <span style={{ fontSize: '12px', color: colors.textSecondary }}>Earnings</span>
-              </div>
-              <div className="mono" style={{ fontSize: '24px', fontWeight: '600', color: '#10b981' }}>${totalEarnings.toFixed(0)}</div>
-              <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>total</div>
-            </div>
-          )}
-          
+      <div style={{ maxWidth: '1200px', margin: '24px auto 0', padding: '0 16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
           <div className="summary-card">
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
               <Clock size={16} color="#fbbf24" />
-              <span style={{ fontSize: '12px', color: colors.textSecondary }}>Standard</span>
+              <span style={{ fontSize: '12px', color: colors.textSecondary }}>Total Hours</span>
             </div>
-            <div className="mono" style={{ fontSize: '24px', fontWeight: '600', color: colors.text }}>{totals.standardHours.toFixed(1)}</div>
-            <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>hours</div>
+            <div className="mono" style={{ fontSize: '28px', fontWeight: '600', color: colors.text }}>{totalHours.toFixed(1)}</div>
+            <div style={{ fontSize: '11px', color: colors.textTertiary, marginTop: '4px' }}>
+              Drive: {totals.drivingHours.toFixed(1)} | Std: {totals.standardHours.toFixed(1)} | OT: {totals.overtimeHours.toFixed(1)}
+            </div>
+            <div style={{ fontSize: '11px', color: colors.textTertiary, marginTop: '2px' }}>
+              Night: {totals.nightHours.toFixed(1)} | Night OT: {totals.nightOvertimeHours.toFixed(1)}
+            </div>
+            <div style={{ fontSize: '11px', color: colors.textTertiary, marginTop: '2px' }}>
+              Weekend: {totals.weekendHours.toFixed(1)} | Weekend OT: {totals.weekendOvertimeHours.toFixed(1)}
+            </div>
           </div>
           
           <div className="summary-card">
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <Clock size={16} color="#fb923c" />
-              <span style={{ fontSize: '12px', color: colors.textSecondary }}>Overtime</span>
-            </div>
-            <div className="mono" style={{ fontSize: '24px', fontWeight: '600', color: colors.text }}>{totals.overtimeHours.toFixed(1)}</div>
-            <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>hours</div>
-          </div>
-          
-          <div className="summary-card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <MapPin size={16} color="#60a5fa" />
+              <Car size={16} color="#60a5fa" />
               <span style={{ fontSize: '12px', color: colors.textSecondary }}>Mileage</span>
             </div>
             <div className="mono" style={{ fontSize: '24px', fontWeight: '600', color: colors.text }}>{totals.mileage.toFixed(0)}</div>
             <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>miles</div>
+            <div className="mono" style={{ fontSize: '16px', fontWeight: '600', color: '#10b981', marginTop: '8px' }}>
+              ${mileagePayment.toFixed(2)}
+            </div>
+            <div style={{ fontSize: '11px', color: colors.textTertiary, marginTop: '2px' }}>
+              @ ${IRS_MILEAGE_RATE}/mi (IRS 2026)
+            </div>
           </div>
           
           <div className="summary-card">
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <DollarSign size={16} color="#4ade80" />
-              <span style={{ fontSize: '12px', color: colors.textSecondary }}>Gas</span>
+              <DollarSign size={16} color="#8b5cf6" />
+              <span style={{ fontSize: '12px', color: colors.textSecondary }}>Per Diem</span>
             </div>
-            <div className="mono" style={{ fontSize: '24px', fontWeight: '600', color: colors.text }}>${totals.gasExpense.toFixed(0)}</div>
-            <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>spent</div>
+            <div className="mono" style={{ fontSize: '28px', fontWeight: '600', color: colors.text }}>${totals.perDiem.toFixed(0)}</div>
+            <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>daily allowance</div>
           </div>
           
           <div className="summary-card">
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <FileText size={16} color="#a78bfa" />
-              <span style={{ fontSize: '12px', color: colors.textSecondary }}>Other</span>
+              <FileText size={16} color="#ec4899" />
+              <span style={{ fontSize: '12px', color: colors.textSecondary }}>Expenses</span>
             </div>
-            <div className="mono" style={{ fontSize: '24px', fontWeight: '600', color: colors.text }}>${totals.otherExpense.toFixed(0)}</div>
-            <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>expenses</div>
+            <div className="mono" style={{ fontSize: '28px', fontWeight: '600', color: colors.text }}>${totals.otherExpense.toFixed(0)}</div>
+            <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>other costs</div>
+          </div>
+          
+          <div className="summary-card" style={{ background: theme === 'dark' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.15)', border: `1px solid ${theme === 'dark' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(16, 185, 129, 0.4)'}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <DollarSign size={16} color="#10b981" />
+              <span style={{ fontSize: '12px', color: '#10b981', fontWeight: '600' }}>TOTAL REIMBURSEMENT</span>
+            </div>
+            <div className="mono" style={{ fontSize: '32px', fontWeight: '700', color: '#10b981' }}>
+              ${(mileagePayment + totals.perDiem + totals.otherExpense).toFixed(2)}
+            </div>
+            <div style={{ fontSize: '11px', color: colors.textTertiary, marginTop: '4px' }}>
+              Mileage + Per Diem + Expenses
+            </div>
           </div>
         </div>
       </div>
 
       {/* Entry Form */}
-      <div style={{ maxWidth: '896px', margin: '24px auto 0', padding: '0 16px' }}>
+      <div style={{ maxWidth: '1200px', margin: '24px auto 0', padding: '0 16px' }}>
         <div className="glass" style={{ borderRadius: '16px', padding: '24px', border: isEditing ? '1px solid rgba(59, 130, 246, 0.3)' : `1px solid ${colors.cardBorder}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
             <h2 style={{ fontSize: '20px', fontWeight: '600', color: colors.accent, display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
               {isEditing ? <Edit2 size={20} /> : <Plus size={20} />}
               {isEditing ? 'Edit Entry' : 'New Entry'}
@@ -1124,12 +966,13 @@ export default function ContractorTracker() {
             )}
           </div>
           
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Date and Project */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
               <div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>
                   <Calendar size={16} />
-                  Date
+                  Date *
                 </label>
                 <input
                   type="date"
@@ -1151,7 +994,7 @@ export default function ContractorTracker() {
                     : setCurrentEntry({ ...currentEntry, projectName: e.target.value })
                   }
                   className="input-field"
-                  placeholder="e.g., Kitchen Remodel"
+                  placeholder="e.g., Pump Station Overhaul"
                   list="projects-list"
                 />
                 <datalist id="projects-list">
@@ -1160,173 +1003,286 @@ export default function ContractorTracker() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Standard Hours</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={entryFormContent.standardHours}
-                  onChange={(e) => isEditing
-                    ? setEditingEntry({ ...editingEntry, standardHours: e.target.value })
-                    : setCurrentEntry({ ...currentEntry, standardHours: e.target.value })
-                  }
-                  className="input-field"
-                  placeholder="8.0"
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Overtime Hours</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={entryFormContent.overtimeHours}
-                  onChange={(e) => isEditing
-                    ? setEditingEntry({ ...editingEntry, overtimeHours: e.target.value })
-                    : setCurrentEntry({ ...currentEntry, overtimeHours: e.target.value })
-                  }
-                  className="input-field"
-                  placeholder="2.0"
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>
-                  <MapPin size={16} />
-                  Mileage (miles)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={entryFormContent.mileage}
-                  onChange={(e) => isEditing
-                    ? setEditingEntry({ ...editingEntry, mileage: e.target.value })
-                    : setCurrentEntry({ ...currentEntry, mileage: e.target.value })
-                  }
-                  className="input-field"
-                  placeholder="45.2"
-                />
-              </div>
-              <div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>
-                  <DollarSign size={16} />
-                  Gas Expense
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={entryFormContent.gasExpense}
-                  onChange={(e) => isEditing
-                    ? setEditingEntry({ ...editingEntry, gasExpense: e.target.value })
-                    : setCurrentEntry({ ...currentEntry, gasExpense: e.target.value })
-                  }
-                  className="input-field"
-                  placeholder="52.30"
-                />
-              </div>
-            </div>
-
+            {/* Hours Section */}
             <div>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Other Expense</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px' }}>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={entryFormContent.otherExpense}
-                  onChange={(e) => isEditing
-                    ? setEditingEntry({ ...editingEntry, otherExpense: e.target.value })
-                    : setCurrentEntry({ ...currentEntry, otherExpense: e.target.value })
-                  }
-                  className="input-field"
-                  placeholder="Amount"
-                />
-                <select
-                  value={entryFormContent.expenseCategory}
-                  onChange={(e) => isEditing
-                    ? setEditingEntry({ ...editingEntry, expenseCategory: e.target.value })
-                    : setCurrentEntry({ ...currentEntry, expenseCategory: e.target.value })
-                  }
-                  className="input-field"
-                >
-                  <option value="">Select Category...</option>
-                  {expenseCategories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  value={entryFormContent.expenseDescription}
-                  onChange={(e) => isEditing
-                    ? setEditingEntry({ ...editingEntry, expenseDescription: e.target.value })
-                    : setCurrentEntry({ ...currentEntry, expenseDescription: e.target.value })
-                  }
-                  className="input-field"
-                  placeholder="Description"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>
-                <Camera size={16} />
-                Receipt Image
-              </label>
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleImageUpload}
-                className="input-field"
-                style={{ padding: '12px' }}
-              />
-              {entryFormContent.receiptImage && (
-                <div style={{ marginTop: '12px', position: 'relative', display: 'inline-block' }}>
-                  <img src={entryFormContent.receiptImage} alt="Receipt" style={{ maxWidth: '100%', height: '128px', borderRadius: '8px', border: `1px solid ${colors.cardBorder}` }} />
-                  <button
-                    onClick={() => isEditing
-                      ? setEditingEntry({ ...editingEntry, receiptImage: null })
-                      : setCurrentEntry({ ...currentEntry, receiptImage: null })
+              <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px', color: colors.text, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Clock size={18} />
+                Hours Worked
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '6px', color: colors.textSecondary }}>
+                    Driving
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={entryFormContent.drivingHours}
+                    onChange={(e) => isEditing
+                      ? setEditingEntry({ ...editingEntry, drivingHours: e.target.value })
+                      : setCurrentEntry({ ...currentEntry, drivingHours: e.target.value })
                     }
-                    style={{
-                      position: 'absolute',
-                      top: '-8px',
-                      right: '-8px',
-                      background: '#ef4444',
-                      color: 'white',
-                      borderRadius: '50%',
-                      width: '24px',
-                      height: '24px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '12px',
-                      border: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    ×
-                  </button>
+                    className="input-field"
+                    placeholder="0.0"
+                  />
                 </div>
-              )}
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '6px', color: colors.textSecondary }}>
+                    Standard
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={entryFormContent.standardHours}
+                    onChange={(e) => isEditing
+                      ? setEditingEntry({ ...editingEntry, standardHours: e.target.value })
+                      : setCurrentEntry({ ...currentEntry, standardHours: e.target.value })
+                    }
+                    className="input-field"
+                    placeholder="8.0"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '6px', color: colors.textSecondary }}>
+                    Overtime
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={entryFormContent.overtimeHours}
+                    onChange={(e) => isEditing
+                      ? setEditingEntry({ ...editingEntry, overtimeHours: e.target.value })
+                      : setCurrentEntry({ ...currentEntry, overtimeHours: e.target.value })
+                    }
+                    className="input-field"
+                    placeholder="0.0"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '6px', color: colors.textSecondary }}>
+                    Night
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={entryFormContent.nightHours}
+                    onChange={(e) => isEditing
+                      ? setEditingEntry({ ...editingEntry, nightHours: e.target.value })
+                      : setCurrentEntry({ ...currentEntry, nightHours: e.target.value })
+                    }
+                    className="input-field"
+                    placeholder="0.0"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '6px', color: colors.textSecondary }}>
+                    Night OT
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={entryFormContent.nightOvertimeHours}
+                    onChange={(e) => isEditing
+                      ? setEditingEntry({ ...editingEntry, nightOvertimeHours: e.target.value })
+                      : setCurrentEntry({ ...currentEntry, nightOvertimeHours: e.target.value })
+                    }
+                    className="input-field"
+                    placeholder="0.0"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '6px', color: colors.textSecondary }}>
+                    Weekend
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={entryFormContent.weekendHours}
+                    onChange={(e) => isEditing
+                      ? setEditingEntry({ ...editingEntry, weekendHours: e.target.value })
+                      : setCurrentEntry({ ...currentEntry, weekendHours: e.target.value })
+                    }
+                    className="input-field"
+                    placeholder="0.0"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '500', marginBottom: '6px', color: colors.textSecondary }}>
+                    Weekend OT
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={entryFormContent.weekendOvertimeHours}
+                    onChange={(e) => isEditing
+                      ? setEditingEntry({ ...editingEntry, weekendOvertimeHours: e.target.value })
+                      : setCurrentEntry({ ...currentEntry, weekendOvertimeHours: e.target.value })
+                    }
+                    className="input-field"
+                    placeholder="0.0"
+                  />
+                </div>
+              </div>
             </div>
 
+            {/* Expenses Section */}
             <div>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Notes</label>
-              <textarea
-                value={entryFormContent.notes}
-                onChange={(e) => isEditing
-                  ? setEditingEntry({ ...editingEntry, notes: e.target.value })
-                  : setCurrentEntry({ ...currentEntry, notes: e.target.value })
-                }
-                className="input-field"
-                style={{ height: '96px', resize: 'none' }}
-                placeholder="Additional notes about this entry..."
-              />
+              <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '12px', color: colors.text, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <DollarSign size={18} />
+                Expenses & Reimbursements
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>
+                    <MapPin size={16} />
+                    Mileage (miles)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={entryFormContent.mileage}
+                    onChange={(e) => isEditing
+                      ? setEditingEntry({ ...editingEntry, mileage: e.target.value })
+                      : setCurrentEntry({ ...currentEntry, mileage: e.target.value })
+                    }
+                    className="input-field"
+                    placeholder="45.2"
+                  />
+                  {entryFormContent.mileage && (
+                    <div style={{ fontSize: '12px', color: '#10b981', marginTop: '4px', fontWeight: '500' }}>
+                      = ${(parseFloat(entryFormContent.mileage) * IRS_MILEAGE_RATE).toFixed(2)} @ ${IRS_MILEAGE_RATE}/mi
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>
+                    Per Diem
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={entryFormContent.perDiem}
+                    onChange={(e) => isEditing
+                      ? setEditingEntry({ ...editingEntry, perDiem: e.target.value })
+                      : setCurrentEntry({ ...currentEntry, perDiem: e.target.value })
+                    }
+                    className="input-field"
+                    placeholder="75.00"
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: '16px' }}>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>
+                  Other Expense
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={entryFormContent.otherExpense}
+                    onChange={(e) => isEditing
+                      ? setEditingEntry({ ...editingEntry, otherExpense: e.target.value })
+                      : setCurrentEntry({ ...currentEntry, otherExpense: e.target.value })
+                    }
+                    className="input-field"
+                    placeholder="Amount"
+                  />
+                  <select
+                    value={entryFormContent.expenseCategory}
+                    onChange={(e) => isEditing
+                      ? setEditingEntry({ ...editingEntry, expenseCategory: e.target.value })
+                      : setCurrentEntry({ ...currentEntry, expenseCategory: e.target.value })
+                    }
+                    className="input-field"
+                  >
+                    <option value="">Category...</option>
+                    {expenseCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={entryFormContent.expenseDescription}
+                    onChange={(e) => isEditing
+                      ? setEditingEntry({ ...editingEntry, expenseDescription: e.target.value })
+                      : setCurrentEntry({ ...currentEntry, expenseDescription: e.target.value })
+                    }
+                    className="input-field"
+                    placeholder="Description"
+                  />
+                </div>
+              </div>
             </div>
 
-            <button onClick={isEditing ? updateEntry : addEntry} className="btn-primary" style={{ width: '100%' }}>
+            {/* Receipt & Notes */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>
+                  <Camera size={16} />
+                  Receipt Image
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleImageUpload}
+                  className="input-field"
+                  style={{ padding: '12px' }}
+                />
+                {entryFormContent.receiptImage && (
+                  <div style={{ marginTop: '12px', position: 'relative', display: 'inline-block' }}>
+                    <img 
+                      src={entryFormContent.receiptImage} 
+                      alt="Receipt" 
+                      style={{ maxWidth: '100%', height: '160px', borderRadius: '8px', border: `1px solid ${colors.cardBorder}`, objectFit: 'cover' }} 
+                    />
+                    <button
+                      onClick={() => isEditing
+                        ? setEditingEntry({ ...editingEntry, receiptImage: null })
+                        : setCurrentEntry({ ...currentEntry, receiptImage: null })
+                      }
+                      style={{
+                        position: 'absolute',
+                        top: '-8px',
+                        right: '-8px',
+                        background: '#ef4444',
+                        color: 'white',
+                        borderRadius: '50%',
+                        width: '28px',
+                        height: '28px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '18px',
+                        fontWeight: 'bold',
+                        border: '2px solid white',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Notes</label>
+                <textarea
+                  value={entryFormContent.notes}
+                  onChange={(e) => isEditing
+                    ? setEditingEntry({ ...editingEntry, notes: e.target.value })
+                    : setCurrentEntry({ ...currentEntry, notes: e.target.value })
+                  }
+                  className="input-field"
+                  style={{ height: '120px', resize: 'none' }}
+                  placeholder="Additional notes about this entry..."
+                />
+              </div>
+            </div>
+
+            <button onClick={isEditing ? updateEntry : addEntry} className="btn-primary" style={{ width: '100%', padding: '18px' }}>
               {isEditing ? <><Edit2 size={20} /> Update Entry</> : <><Plus size={20} /> Add Entry</>}
             </button>
           </div>
@@ -1335,7 +1291,7 @@ export default function ContractorTracker() {
 
       {/* Entries List */}
       {filteredEntries.length > 0 && (
-        <div style={{ maxWidth: '896px', margin: '24px auto 0', padding: '0 16px' }}>
+        <div style={{ maxWidth: '1200px', margin: '24px auto 0', padding: '0 16px' }}>
           <div className="glass" style={{ borderRadius: '16px', padding: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
               <h2 style={{ fontSize: '20px', fontWeight: '600', color: colors.accent, margin: 0 }}>
@@ -1346,226 +1302,197 @@ export default function ContractorTracker() {
                   <FileSpreadsheet size={16} />
                   CSV
                 </button>
-                <button onClick={() => generatePDF(filteredEntries, contractorInfo, filterProject)} className="btn-secondary" style={{ padding: '12px 16px' }}>
+                <button onClick={() => generatePDF(filteredEntries, contractorInfo, filterProject)} className="btn-primary" style={{ padding: '12px 20px' }}>
                   <Download size={16} />
-                  PDF
+                  PDF Report
                 </button>
-                {contractorInfo.standardRate && (
-                  <button onClick={() => setShowInvoiceModal(true)} className="btn-primary" style={{ padding: '12px 16px' }}>
-                    <Receipt size={16} />
-                    Invoice
-                  </button>
-                )}
               </div>
             </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {[...filteredEntries].reverse().map((entry) => (
-                <div key={entry.id} className="entry-card">
-                  <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', marginBottom: '12px' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                        <div className="mono" style={{ fontWeight: '600', color: colors.accent }}>{formatDate(entry.date)}</div>
-                        {entry.projectName && (
-                          <span style={{ 
-                            background: theme === 'dark' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(245, 158, 11, 0.2)', 
-                            padding: '4px 12px', 
-                            borderRadius: '12px', 
-                            fontSize: '12px',
-                            color: colors.accent,
-                            border: `1px solid ${theme === 'dark' ? 'rgba(251, 191, 36, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`
-                          }}>
-                            {entry.projectName}
+              {[...filteredEntries].reverse().map((entry) => {
+                const entryMileagePayment = (parseFloat(entry.mileage) || 0) * IRS_MILEAGE_RATE;
+                
+                return (
+                  <div key={entry.id} className="entry-card">
+                    <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                          <div className="mono" style={{ fontWeight: '600', color: colors.accent, fontSize: '16px' }}>
+                            {formatDate(entry.date)}
+                          </div>
+                          {entry.projectName && (
+                            <span style={{ 
+                              background: theme === 'dark' ? 'rgba(251, 191, 36, 0.2)' : 'rgba(245, 158, 11, 0.2)', 
+                              padding: '4px 12px', 
+                              borderRadius: '12px', 
+                              fontSize: '12px',
+                              color: colors.accent,
+                              border: `1px solid ${theme === 'dark' ? 'rgba(251, 191, 36, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`
+                            }}>
+                              {entry.projectName}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '11px', color: colors.textTertiary, marginTop: '4px' }}>
+                          Added {new Date(entry.timestamp).toLocaleString()}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => setEditingEntry(entry)}
+                          style={{
+                            color: '#60a5fa',
+                            background: 'transparent',
+                            border: 'none',
+                            padding: '8px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            transition: 'all 0.3s ease'
+                          }}
+                          onMouseEnter={(e) => e.target.style.background = 'rgba(96, 165, 250, 0.1)'}
+                          onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => deleteEntry(entry.id)}
+                          style={{
+                            color: '#f87171',
+                            background: 'transparent',
+                            border: 'none',
+                            padding: '8px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            transition: 'all 0.3s ease'
+                          }}
+                          onMouseEnter={(e) => e.target.style.background = 'rgba(248, 113, 113, 0.1)'}
+                          onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* Hours Display */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '10px', fontSize: '13px', marginBottom: '12px' }}>
+                      {entry.drivingHours && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Clock size={14} color="#94a3b8" />
+                          <span style={{ color: colors.textSecondary }}>{entry.drivingHours}h driving</span>
+                        </div>
+                      )}
+                      {entry.standardHours && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Clock size={14} color="#fbbf24" />
+                          <span style={{ color: colors.textSecondary }}>{entry.standardHours}h standard</span>
+                        </div>
+                      )}
+                      {entry.overtimeHours && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Clock size={14} color="#fb923c" />
+                          <span style={{ color: colors.textSecondary }}>{entry.overtimeHours}h OT</span>
+                        </div>
+                      )}
+                      {entry.nightHours && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Clock size={14} color="#a78bfa" />
+                          <span style={{ color: colors.textSecondary }}>{entry.nightHours}h night</span>
+                        </div>
+                      )}
+                      {entry.nightOvertimeHours && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Clock size={14} color="#c084fc" />
+                          <span style={{ color: colors.textSecondary }}>{entry.nightOvertimeHours}h night OT</span>
+                        </div>
+                      )}
+                      {entry.weekendHours && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Clock size={14} color="#22d3ee" />
+                          <span style={{ color: colors.textSecondary }}>{entry.weekendHours}h weekend</span>
+                        </div>
+                      )}
+                      {entry.weekendOvertimeHours && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Clock size={14} color="#06b6d4" />
+                          <span style={{ color: colors.textSecondary }}>{entry.weekendOvertimeHours}h weekend OT</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Expenses Display */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px', fontSize: '13px' }}>
+                      {entry.mileage && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <MapPin size={14} color="#60a5fa" />
+                          <span style={{ color: colors.textSecondary }}>
+                            {entry.mileage} mi 
+                            <span style={{ color: '#10b981', fontWeight: '600', marginLeft: '4px' }}>
+                              (${entryMileagePayment.toFixed(2)})
+                            </span>
                           </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '12px', color: colors.textTertiary, marginTop: '4px' }}>
-                        Added {new Date(entry.timestamp).toLocaleString()}
-                      </div>
+                        </div>
+                      )}
+                      {entry.perDiem && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <DollarSign size={14} color="#8b5cf6" />
+                          <span style={{ color: colors.textSecondary }}>
+                            ${parseFloat(entry.perDiem).toFixed(2)} per diem
+                          </span>
+                        </div>
+                      )}
+                      {entry.otherExpense && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <FileText size={14} color="#ec4899" />
+                          <span style={{ color: colors.textSecondary }}>
+                            ${parseFloat(entry.otherExpense).toFixed(2)}
+                            {entry.expenseCategory && ` (${entry.expenseCategory})`}
+                            {entry.expenseDescription && ` - ${entry.expenseDescription}`}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        onClick={() => setEditingEntry(entry)}
-                        style={{
-                          color: '#60a5fa',
-                          background: 'transparent',
-                          border: 'none',
-                          padding: '8px',
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          transition: 'all 0.3s ease'
-                        }}
-                        onMouseEnter={(e) => e.target.style.background = 'rgba(96, 165, 250, 0.1)'}
-                        onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button
-                        onClick={() => deleteEntry(entry.id)}
-                        style={{
-                          color: '#f87171',
-                          background: 'transparent',
-                          border: 'none',
-                          padding: '8px',
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          transition: 'all 0.3s ease'
-                        }}
-                        onMouseEnter={(e) => e.target.style.background = 'rgba(248, 113, 113, 0.1)'}
-                        onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px', fontSize: '14px' }}>
-                    {entry.standardHours && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Clock size={16} color="#fbbf24" />
-                        <span style={{ color: colors.textSecondary }}>{entry.standardHours}h standard</span>
+                    
+                    {entry.notes && (
+                      <div style={{ marginTop: '12px', fontSize: '13px', color: colors.textSecondary, fontStyle: 'italic', background: colors.inputBg, padding: '12px', borderRadius: '8px' }}>
+                        {entry.notes}
                       </div>
                     )}
-                    {entry.overtimeHours && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Clock size={16} color="#fb923c" />
-                        <span style={{ color: colors.textSecondary }}>{entry.overtimeHours}h OT</span>
-                      </div>
-                    )}
-                    {entry.mileage && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <MapPin size={16} color="#60a5fa" />
-                        <span style={{ color: colors.textSecondary }}>{entry.mileage} mi</span>
-                      </div>
-                    )}
-                    {entry.gasExpense && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <DollarSign size={16} color="#4ade80" />
-                        <span style={{ color: colors.textSecondary }}>${parseFloat(entry.gasExpense).toFixed(2)} gas</span>
-                      </div>
-                    )}
-                    {entry.otherExpense && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <FileText size={16} color="#a78bfa" />
-                        <span style={{ color: colors.textSecondary }}>
-                          ${parseFloat(entry.otherExpense).toFixed(2)}
-                          {entry.expenseCategory && ` (${entry.expenseCategory})`}
-                          {entry.expenseDescription && ` - ${entry.expenseDescription}`}
-                        </span>
+                    
+                    {entry.receiptImage && (
+                      <div style={{ marginTop: '12px' }}>
+                        <img 
+                          src={entry.receiptImage} 
+                          alt="Receipt" 
+                          style={{ 
+                            maxWidth: '100%', 
+                            height: '140px', 
+                            borderRadius: '8px', 
+                            border: `1px solid ${colors.cardBorder}`, 
+                            cursor: 'pointer', 
+                            transition: 'opacity 0.3s',
+                            objectFit: 'cover'
+                          }}
+                          onClick={() => window.open(entry.receiptImage, '_blank')}
+                          onMouseEnter={(e) => e.target.style.opacity = '0.8'}
+                          onMouseLeave={(e) => e.target.style.opacity = '1'}
+                        />
                       </div>
                     )}
                   </div>
-                  
-                  {entry.notes && (
-                    <div style={{ marginTop: '12px', fontSize: '14px', color: colors.textSecondary, fontStyle: 'italic', background: colors.inputBg, padding: '12px', borderRadius: '8px' }}>
-                      {entry.notes}
-                    </div>
-                  )}
-                  
-                  {entry.receiptImage && (
-                    <div style={{ marginTop: '12px' }}>
-                      <img 
-                        src={entry.receiptImage} 
-                        alt="Receipt" 
-                        style={{ maxWidth: '100%', height: '128px', borderRadius: '8px', border: `1px solid ${colors.cardBorder}`, cursor: 'pointer', transition: 'opacity 0.3s' }}
-                        onClick={() => window.open(entry.receiptImage, '_blank')}
-                        onMouseEnter={(e) => e.target.style.opacity = '0.8'}
-                        onMouseLeave={(e) => e.target.style.opacity = '1'}
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
       )}
 
       {entries.length === 0 && (
-        <div style={{ maxWidth: '896px', margin: '48px auto 0', padding: '0 16px', textAlign: 'center' }}>
+        <div style={{ maxWidth: '1200px', margin: '48px auto 0', padding: '0 16px', textAlign: 'center' }}>
           <div className="glass" style={{ borderRadius: '16px', padding: '48px' }}>
             <FileText size={64} color={colors.textTertiary} style={{ margin: '0 auto 16px' }} />
             <h3 style={{ fontSize: '20px', fontWeight: '600', color: colors.textSecondary, marginBottom: '8px' }}>No Entries Yet</h3>
             <p style={{ color: colors.textTertiary }}>Add your first entry to start tracking your contractor work</p>
-          </div>
-        </div>
-      )}
-
-      {/* Invoice Modal */}
-      {showInvoiceModal && (
-        <div className="modal-overlay" onClick={() => setShowInvoiceModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ fontSize: '24px', fontWeight: '700', color: colors.accent, marginBottom: '24px' }}>Generate Invoice</h2>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Invoice Number</label>
-                <input
-                  type="text"
-                  value={invoiceInfo.invoiceNumber}
-                  onChange={(e) => setInvoiceInfo({ ...invoiceInfo, invoiceNumber: e.target.value })}
-                  className="input-field"
-                  placeholder="INV-001"
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Client Name *</label>
-                <input
-                  type="text"
-                  value={invoiceInfo.clientName}
-                  onChange={(e) => setInvoiceInfo({ ...invoiceInfo, clientName: e.target.value })}
-                  className="input-field"
-                  placeholder="Client Company"
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Client Email</label>
-                <input
-                  type="email"
-                  value={invoiceInfo.clientEmail}
-                  onChange={(e) => setInvoiceInfo({ ...invoiceInfo, clientEmail: e.target.value })}
-                  className="input-field"
-                  placeholder="client@example.com"
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Payment Terms</label>
-                <select
-                  value={invoiceInfo.paymentTerms}
-                  onChange={(e) => setInvoiceInfo({ ...invoiceInfo, paymentTerms: e.target.value })}
-                  className="input-field"
-                >
-                  <option value="Due on Receipt">Due on Receipt</option>
-                  <option value="Net 15">Net 15</option>
-                  <option value="Net 30">Net 30</option>
-                  <option value="Net 60">Net 60</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-                <button 
-                  onClick={() => {
-                    if (!invoiceInfo.clientName) {
-                      alert('Please enter client name');
-                      return;
-                    }
-                    generateInvoice(filteredEntries, contractorInfo, invoiceInfo);
-                    setShowInvoiceModal(false);
-                  }}
-                  className="btn-primary" 
-                  style={{ flex: 1 }}
-                >
-                  <Download size={16} />
-                  Generate Invoice
-                </button>
-                <button onClick={() => setShowInvoiceModal(false)} className="btn-secondary" style={{ flex: 1 }}>
-                  Cancel
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       )}
