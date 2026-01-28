@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, Clock, DollarSign, MapPin, Camera, FileText, Plus, Trash2, Download, Edit2, Filter, X, Sun, Moon, FileSpreadsheet, Car, Receipt, Check, ChevronLeft, Eye, Printer, Settings, CheckSquare, Square } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Calendar, Clock, DollarSign, MapPin, Camera, FileText, Plus, Trash2, Download, Edit2, Filter, X, Sun, Moon, FileSpreadsheet, Car, Receipt, Check, ChevronLeft, Eye, Printer, Settings, CheckSquare, Square, Image, Upload } from 'lucide-react';
 
 // IRS Mileage Rate for 2026
 const IRS_MILEAGE_RATE = 0.725;
@@ -467,6 +467,12 @@ export default function ContractorTracker() {
     notes: ''
   });
 
+  // Camera/Photo refs
+  const cameraInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
+  const editCameraInputRef = useRef(null);
+  const editGalleryInputRef = useRef(null);
+
   useEffect(() => {
     try {
       const entriesData = localStorage.getItem('contractor-entries');
@@ -536,19 +542,48 @@ export default function ContractorTracker() {
     localStorage.setItem('theme', newTheme);
   };
 
-  const handleImageUpload = (e) => {
+  const handleImageUpload = (e, isEditing = false) => {
     const file = e.target.files[0];
     if (file) {
+      // Compress image for mobile
       const reader = new FileReader();
       reader.onloadend = () => {
-        if (editingEntry) {
-          setEditingEntry({ ...editingEntry, receiptImage: reader.result });
-        } else {
-          setCurrentEntry({ ...currentEntry, receiptImage: reader.result });
-        }
+        // Create an image to potentially resize
+        const img = document.createElement('img');
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxSize = 1200; // Max dimension
+          let { width, height } = img;
+          
+          if (width > maxSize || height > maxSize) {
+            if (width > height) {
+              height = (height / width) * maxSize;
+              width = maxSize;
+            } else {
+              width = (width / height) * maxSize;
+              height = maxSize;
+            }
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          const compressedImage = canvas.toDataURL('image/jpeg', 0.8);
+          
+          if (isEditing) {
+            setEditingEntry(prev => ({ ...prev, receiptImage: compressedImage }));
+          } else {
+            setCurrentEntry(prev => ({ ...prev, receiptImage: compressedImage }));
+          }
+        };
+        img.src = reader.result;
       };
       reader.readAsDataURL(file);
     }
+    // Reset the input so the same file can be selected again
+    e.target.value = '';
   };
 
   const addEntry = () => {
@@ -949,6 +984,34 @@ export default function ContractorTracker() {
             box-shadow: 0 8px 32px rgba(0,0,0,0.2);
             overflow: hidden;
           }
+
+          /* Mobile responsive */
+          @media (max-width: 900px) {
+            .invoice-layout {
+              grid-template-columns: 1fr !important;
+            }
+            
+            .invoice-preview-container {
+              position: relative !important;
+              top: 0 !important;
+              order: -1;
+              margin-bottom: 20px;
+            }
+            
+            .input-field {
+              font-size: 16px !important;
+              min-height: 44px;
+            }
+            
+            .btn-primary, .btn-secondary {
+              min-height: 44px;
+            }
+          }
+
+          /* Touch-friendly */
+          * {
+            -webkit-tap-highlight-color: transparent;
+          }
         `}</style>
 
         {/* Header */}
@@ -980,7 +1043,7 @@ export default function ContractorTracker() {
           </div>
         </div>
 
-        <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '24px 20px', display: 'grid', gridTemplateColumns: '1fr 420px', gap: '24px' }}>
+        <div className="invoice-layout" style={{ maxWidth: '1400px', margin: '0 auto', padding: '24px 20px', display: 'grid', gridTemplateColumns: '1fr 420px', gap: '24px' }}>
           {/* Left Panel - Entry Selection & Rates */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Invoice Details */}
@@ -1133,7 +1196,7 @@ export default function ContractorTracker() {
           </div>
 
           {/* Right Panel - Live Invoice Preview */}
-          <div style={{ position: 'sticky', top: '100px', height: 'fit-content' }}>
+          <div className="invoice-preview-container" style={{ position: 'sticky', top: '100px', height: 'fit-content' }}>
             <div className="invoice-preview">
               {/* Invoice Header */}
               <div style={{ background: colors.invoiceHeaderBg, padding: '24px', color: '#fff' }}>
@@ -1401,6 +1464,42 @@ export default function ContractorTracker() {
 
         .filter-chip:hover {
           background: ${theme === 'dark' ? 'rgba(251, 191, 36, 0.3)' : 'rgba(245, 158, 11, 0.3)'};
+        }
+
+        .photo-btn:hover {
+          transform: scale(1.02);
+          background: ${theme === 'dark' ? 'rgba(30, 41, 59, 0.8)' : 'rgba(241, 245, 249, 1)'} !important;
+        }
+
+        .photo-btn:active {
+          transform: scale(0.98);
+        }
+
+        /* Mobile-friendly touch targets */
+        @media (max-width: 768px) {
+          .btn-primary, .btn-secondary {
+            min-height: 48px;
+            font-size: 15px;
+          }
+          
+          .input-field {
+            font-size: 16px !important; /* Prevents iOS zoom on focus */
+            min-height: 48px;
+          }
+          
+          .photo-btn {
+            min-height: 100px !important;
+          }
+          
+          .summary-card {
+            padding: 14px;
+          }
+        }
+
+        /* Smooth scrolling for iOS */
+        * {
+          -webkit-tap-highlight-color: transparent;
+          -webkit-touch-callout: none;
         }
       `}</style>
 
@@ -1892,45 +1991,152 @@ export default function ContractorTracker() {
                   <Camera size={16} />
                   Receipt Photo
                 </label>
+                
+                {/* Hidden file inputs */}
                 <input
+                  ref={isEditing ? editCameraInputRef : cameraInputRef}
                   type="file"
                   accept="image/*"
-                  onChange={handleImageUpload}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    background: colors.inputBg,
-                    border: `1px solid ${colors.inputBorder}`,
-                    borderRadius: '8px',
-                    color: colors.text,
-                    cursor: 'pointer'
-                  }}
+                  capture="environment"
+                  onChange={(e) => handleImageUpload(e, isEditing)}
+                  style={{ display: 'none' }}
                 />
-                {entryFormContent.receiptImage && (
-                  <div style={{ marginTop: '8px', position: 'relative', display: 'inline-block' }}>
-                    <img src={entryFormContent.receiptImage} alt="Receipt" style={{ height: '60px', borderRadius: '8px' }} />
+                <input
+                  ref={isEditing ? editGalleryInputRef : galleryInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleImageUpload(e, isEditing)}
+                  style={{ display: 'none' }}
+                />
+                
+                {!entryFormContent.receiptImage ? (
+                  <div style={{ display: 'flex', gap: '10px' }}>
                     <button
-                      onClick={() => isEditing 
-                        ? setEditingEntry({ ...editingEntry, receiptImage: null })
-                        : setCurrentEntry({ ...currentEntry, receiptImage: null })
-                      }
+                      type="button"
+                      onClick={() => isEditing ? editCameraInputRef.current?.click() : cameraInputRef.current?.click()}
+                      className="photo-btn"
                       style={{
-                        position: 'absolute',
-                        top: '-6px',
-                        right: '-6px',
-                        background: '#ef4444',
-                        border: 'none',
-                        borderRadius: '50%',
-                        width: '20px',
-                        height: '20px',
-                        cursor: 'pointer',
+                        flex: 1,
                         display: 'flex',
+                        flexDirection: 'column',
                         alignItems: 'center',
-                        justifyContent: 'center'
+                        justifyContent: 'center',
+                        gap: '8px',
+                        padding: '20px 16px',
+                        background: colors.inputBg,
+                        border: `2px dashed ${colors.accent}`,
+                        borderRadius: '12px',
+                        color: colors.accent,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        minHeight: '90px'
                       }}
                     >
-                      <X size={12} color="#fff" />
+                      <Camera size={28} />
+                      <span style={{ fontSize: '13px', fontWeight: '600' }}>Take Photo</span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => isEditing ? editGalleryInputRef.current?.click() : galleryInputRef.current?.click()}
+                      className="photo-btn"
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        padding: '20px 16px',
+                        background: colors.inputBg,
+                        border: `2px dashed ${colors.cardBorder}`,
+                        borderRadius: '12px',
+                        color: colors.textSecondary,
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        minHeight: '90px'
+                      }}
+                    >
+                      <Image size={28} />
+                      <span style={{ fontSize: '13px', fontWeight: '500' }}>Gallery</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ 
+                    position: 'relative', 
+                    borderRadius: '12px', 
+                    overflow: 'hidden',
+                    border: `1px solid ${colors.cardBorder}`,
+                    background: colors.inputBg
+                  }}>
+                    <img 
+                      src={entryFormContent.receiptImage} 
+                      alt="Receipt" 
+                      style={{ 
+                        width: '100%', 
+                        height: '120px', 
+                        objectFit: 'cover',
+                        display: 'block'
+                      }} 
+                    />
+                    <div style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      display: 'flex',
+                      gap: '8px',
+                      padding: '8px',
+                      background: 'linear-gradient(transparent, rgba(0,0,0,0.7))'
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => isEditing ? editCameraInputRef.current?.click() : cameraInputRef.current?.click()}
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          padding: '8px',
+                          background: 'rgba(255,255,255,0.2)',
+                          backdropFilter: 'blur(4px)',
+                          border: 'none',
+                          borderRadius: '8px',
+                          color: '#fff',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          fontWeight: '500'
+                        }}
+                      >
+                        <Camera size={16} />
+                        Retake
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => isEditing 
+                          ? setEditingEntry({ ...editingEntry, receiptImage: null })
+                          : setCurrentEntry({ ...currentEntry, receiptImage: null })
+                        }
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          padding: '8px',
+                          background: 'rgba(239, 68, 68, 0.8)',
+                          border: 'none',
+                          borderRadius: '8px',
+                          color: '#fff',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          fontWeight: '500'
+                        }}
+                      >
+                        <Trash2 size={16} />
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
