@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, DollarSign, MapPin, Camera, FileText, Plus, Trash2, Download, Edit2, Filter, X, Sun, Moon, FileSpreadsheet, Car } from 'lucide-react';
+import { Calendar, Clock, DollarSign, MapPin, Camera, FileText, Plus, Trash2, Download, Edit2, Filter, X, Sun, Moon, FileSpreadsheet, Car, Receipt } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 
 // IRS Mileage Rate for 2026
@@ -54,6 +54,204 @@ const exportToCSV = (entries, contractorInfo) => {
   link.href = url;
   link.download = `contractor_data_${new Date().toISOString().split('T')[0]}.csv`;
   link.click();
+};
+
+// Invoice generation for 1099 contractors
+const generateInvoice = (entries, contractorInfo, invoiceInfo) => {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.width;
+  const margin = 20;
+  let yPos = margin;
+
+  // Header
+  doc.setFillColor(26, 32, 44);
+  doc.rect(0, 0, pageWidth, 55, 'F');
+  
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(32);
+  doc.setFont(undefined, 'bold');
+  doc.text('INVOICE', margin, 28);
+  
+  doc.setFontSize(10);
+  doc.setFont(undefined, 'normal');
+  const invoiceNum = invoiceInfo.invoiceNumber || `INV-${Date.now()}`;
+  doc.text(`Invoice #: ${invoiceNum}`, pageWidth - margin - 50, 25);
+  doc.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth - margin - 50, 35);
+  if (invoiceInfo.dueDate) {
+    doc.text(`Due: ${new Date(invoiceInfo.dueDate).toLocaleDateString()}`, pageWidth - margin - 50, 45);
+  }
+
+  yPos = 70;
+
+  // From/To Section
+  doc.setTextColor(26, 32, 44);
+  doc.setFontSize(11);
+  doc.setFont(undefined, 'bold');
+  doc.text('FROM:', margin, yPos);
+  doc.text('BILL TO:', pageWidth / 2 + 10, yPos);
+  yPos += 8;
+
+  doc.setFont(undefined, 'normal');
+  doc.setFontSize(10);
+  
+  // From section (Contractor)
+  let fromY = yPos;
+  if (contractorInfo.name) {
+    doc.setFont(undefined, 'bold');
+    doc.text(contractorInfo.name, margin, fromY);
+    doc.setFont(undefined, 'normal');
+    fromY += 5;
+  }
+  if (contractorInfo.business) {
+    doc.text(contractorInfo.business, margin, fromY);
+    fromY += 5;
+  }
+
+  // To section (Client)
+  let toY = yPos;
+  if (invoiceInfo.clientName) {
+    doc.setFont(undefined, 'bold');
+    doc.text(invoiceInfo.clientName, pageWidth / 2 + 10, toY);
+    doc.setFont(undefined, 'normal');
+    toY += 5;
+  }
+  if (invoiceInfo.clientAddress) {
+    doc.text(invoiceInfo.clientAddress, pageWidth / 2 + 10, toY);
+    toY += 5;
+  }
+
+  yPos = Math.max(fromY, toY) + 15;
+
+  // Line items header
+  doc.setFillColor(240, 242, 245);
+  doc.rect(margin - 5, yPos - 5, pageWidth - 2 * margin + 10, 12, 'F');
+  
+  doc.setFont(undefined, 'bold');
+  doc.setFontSize(10);
+  doc.text('Description', margin, yPos + 3);
+  doc.text('Qty', pageWidth - 90, yPos + 3);
+  doc.text('Rate', pageWidth - 60, yPos + 3);
+  doc.text('Amount', pageWidth - margin - 5, yPos + 3, { align: 'right' });
+  yPos += 15;
+
+  doc.setFont(undefined, 'normal');
+  doc.setFontSize(9);
+
+  let subtotal = 0;
+
+  // Calculate hour totals
+  const hourTotals = entries.reduce((acc, entry) => ({
+    driving: acc.driving + (parseFloat(entry.drivingHours) || 0),
+    standard: acc.standard + (parseFloat(entry.standardHours) || 0),
+    overtime: acc.overtime + (parseFloat(entry.overtimeHours) || 0),
+    night: acc.night + (parseFloat(entry.nightHours) || 0),
+    nightOT: acc.nightOT + (parseFloat(entry.nightOvertimeHours) || 0),
+    weekend: acc.weekend + (parseFloat(entry.weekendHours) || 0),
+    weekendOT: acc.weekendOT + (parseFloat(entry.weekendOvertimeHours) || 0)
+  }), { driving: 0, standard: 0, overtime: 0, night: 0, nightOT: 0, weekend: 0, weekendOT: 0 });
+
+  // Labor line items
+  const laborItems = [];
+  if (hourTotals.driving > 0) laborItems.push({ desc: 'Driving Hours', hours: hourTotals.driving, rate: invoiceInfo.drivingRate || 0 });
+  if (hourTotals.standard > 0) laborItems.push({ desc: 'Standard Labor', hours: hourTotals.standard, rate: invoiceInfo.standardRate || 0 });
+  if (hourTotals.overtime > 0) laborItems.push({ desc: 'Overtime Labor', hours: hourTotals.overtime, rate: invoiceInfo.overtimeRate || 0 });
+  if (hourTotals.night > 0) laborItems.push({ desc: 'Night Shift Labor', hours: hourTotals.night, rate: invoiceInfo.nightRate || 0 });
+  if (hourTotals.nightOT > 0) laborItems.push({ desc: 'Night Shift Overtime', hours: hourTotals.nightOT, rate: invoiceInfo.nightOTRate || 0 });
+  if (hourTotals.weekend > 0) laborItems.push({ desc: 'Weekend Labor', hours: hourTotals.weekend, rate: invoiceInfo.weekendRate || 0 });
+  if (hourTotals.weekendOT > 0) laborItems.push({ desc: 'Weekend Overtime', hours: hourTotals.weekendOT, rate: invoiceInfo.weekendOTRate || 0 });
+
+  laborItems.forEach(item => {
+    const amount = item.hours * item.rate;
+    doc.text(item.desc, margin, yPos);
+    doc.text(`${item.hours.toFixed(2)}`, pageWidth - 90, yPos);
+    doc.text(`$${item.rate.toFixed(2)}`, pageWidth - 60, yPos);
+    doc.text(`$${amount.toFixed(2)}`, pageWidth - margin - 5, yPos, { align: 'right' });
+    subtotal += amount;
+    yPos += 7;
+  });
+
+  // Reimbursements
+  const mileageTotal = entries.reduce((sum, e) => sum + (parseFloat(e.mileage) || 0), 0);
+  const perDiemTotal = entries.reduce((sum, e) => sum + (parseFloat(e.perDiem) || 0), 0);
+  const expensesTotal = entries.reduce((sum, e) => sum + (parseFloat(e.otherExpense) || 0), 0);
+
+  if (mileageTotal > 0) {
+    const mileageAmount = mileageTotal * IRS_MILEAGE_RATE;
+    yPos += 3;
+    doc.text('Mileage Reimbursement', margin, yPos);
+    doc.text(`${mileageTotal.toFixed(1)} mi`, pageWidth - 90, yPos);
+    doc.text(`$${IRS_MILEAGE_RATE}`, pageWidth - 60, yPos);
+    doc.text(`$${mileageAmount.toFixed(2)}`, pageWidth - margin - 5, yPos, { align: 'right' });
+    subtotal += mileageAmount;
+    yPos += 7;
+  }
+
+  if (perDiemTotal > 0) {
+    doc.text('Per Diem', margin, yPos);
+    doc.text('', pageWidth - 90, yPos);
+    doc.text('', pageWidth - 60, yPos);
+    doc.text(`$${perDiemTotal.toFixed(2)}`, pageWidth - margin - 5, yPos, { align: 'right' });
+    subtotal += perDiemTotal;
+    yPos += 7;
+  }
+
+  if (expensesTotal > 0) {
+    doc.text('Reimbursable Expenses', margin, yPos);
+    doc.text('', pageWidth - 90, yPos);
+    doc.text('', pageWidth - 60, yPos);
+    doc.text(`$${expensesTotal.toFixed(2)}`, pageWidth - margin - 5, yPos, { align: 'right' });
+    subtotal += expensesTotal;
+    yPos += 7;
+  }
+
+  // Totals section
+  yPos += 5;
+  doc.setDrawColor(200, 200, 200);
+  doc.line(margin, yPos, pageWidth - margin, yPos);
+  yPos += 10;
+
+  doc.setFont(undefined, 'bold');
+  doc.setFontSize(11);
+  doc.text('SUBTOTAL:', pageWidth - 70, yPos);
+  doc.text(`$${subtotal.toFixed(2)}`, pageWidth - margin - 5, yPos, { align: 'right' });
+  yPos += 10;
+
+  // NO TAXES for 1099
+  doc.setFontSize(13);
+  doc.text('TOTAL DUE:', pageWidth - 70, yPos);
+  doc.text(`$${subtotal.toFixed(2)}`, pageWidth - margin - 5, yPos, { align: 'right' });
+  
+  // 1099 Notice
+  yPos += 15;
+  doc.setFontSize(9);
+  doc.setFont(undefined, 'normal');
+  doc.setTextColor(100, 100, 100);
+  doc.text('Payment subject to 1099 reporting. Taxes not withheld.', margin, yPos);
+
+  // Payment terms
+  if (invoiceInfo.paymentTerms) {
+    yPos += 10;
+    doc.setTextColor(26, 32, 44);
+    doc.setFont(undefined, 'bold');
+    doc.text('Payment Terms:', margin, yPos);
+    doc.setFont(undefined, 'normal');
+    yPos += 6;
+    doc.text(invoiceInfo.paymentTerms, margin, yPos);
+  }
+
+  // Notes
+  if (invoiceInfo.notes) {
+    yPos += 10;
+    doc.setFont(undefined, 'bold');
+    doc.text('Notes:', margin, yPos);
+    doc.setFont(undefined, 'normal');
+    yPos += 6;
+    const splitNotes = doc.splitTextToSize(invoiceInfo.notes, pageWidth - 2 * margin);
+    doc.text(splitNotes, margin, yPos);
+  }
+
+  const fileName = `invoice_${invoiceNum.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+  doc.save(fileName);
 };
 
 // PDF generation
@@ -276,6 +474,22 @@ export default function ContractorTracker() {
   const [dateFilter, setDateFilter] = useState('all');
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
   const [theme, setTheme] = useState('dark');
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invoiceInfo, setInvoiceInfo] = useState({
+    invoiceNumber: '',
+    clientName: '',
+    clientAddress: '',
+    dueDate: '',
+    drivingRate: '',
+    standardRate: '',
+    overtimeRate: '',
+    nightRate: '',
+    nightOTRate: '',
+    weekendRate: '',
+    weekendOTRate: '',
+    paymentTerms: 'Net 30',
+    notes: ''
+  });
 
   useEffect(() => {
     try {
@@ -670,6 +884,31 @@ export default function ContractorTracker() {
 
         .filter-chip:hover {
           background: ${theme === 'dark' ? 'rgba(251, 191, 36, 0.3)' : 'rgba(245, 158, 11, 0.3)'};
+        }
+
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.7);
+          display: flex;
+          align-items: center;
+          justifyContent: center;
+          z-index: 1000;
+          padding: 16px;
+        }
+
+        .modal-content {
+          background: ${theme === 'dark' ? '#1e293b' : '#ffffff'};
+          border-radius: 16px;
+          padding: 32px;
+          max-width: 600px;
+          width: 100%;
+          max-height: 90vh;
+          overflow-y: auto;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
       `}</style>
 
@@ -1302,9 +1541,13 @@ export default function ContractorTracker() {
                   <FileSpreadsheet size={16} />
                   CSV
                 </button>
-                <button onClick={() => generatePDF(filteredEntries, contractorInfo, filterProject)} className="btn-primary" style={{ padding: '12px 20px' }}>
+                <button onClick={() => generatePDF(filteredEntries, contractorInfo, filterProject)} className="btn-secondary" style={{ padding: '12px 16px' }}>
                   <Download size={16} />
                   PDF Report
+                </button>
+                <button onClick={() => setShowInvoiceModal(true)} className="btn-primary" style={{ padding: '12px 20px' }}>
+                  <Receipt size={16} />
+                  Create Invoice
                 </button>
               </div>
             </div>
@@ -1493,6 +1736,197 @@ export default function ContractorTracker() {
             <FileText size={64} color={colors.textTertiary} style={{ margin: '0 auto 16px' }} />
             <h3 style={{ fontSize: '20px', fontWeight: '600', color: colors.textSecondary, marginBottom: '8px' }}>No Entries Yet</h3>
             <p style={{ color: colors.textTertiary }}>Add your first entry to start tracking your contractor work</p>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Modal */}
+      {showInvoiceModal && (
+        <div className="modal-overlay" onClick={() => setShowInvoiceModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ fontSize: '24px', fontWeight: '700', color: colors.accent, marginBottom: '8px' }}>Create Invoice</h2>
+            <p style={{ fontSize: '13px', color: colors.textSecondary, marginBottom: '24px' }}>
+              Generate a professional 1099 contractor invoice (taxes not withheld)
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Invoice Number</label>
+                  <input
+                    type="text"
+                    value={invoiceInfo.invoiceNumber}
+                    onChange={(e) => setInvoiceInfo({ ...invoiceInfo, invoiceNumber: e.target.value })}
+                    className="input-field"
+                    placeholder="INV-001"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Due Date</label>
+                  <input
+                    type="date"
+                    value={invoiceInfo.dueDate}
+                    onChange={(e) => setInvoiceInfo({ ...invoiceInfo, dueDate: e.target.value })}
+                    className="input-field"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Client Name *</label>
+                <input
+                  type="text"
+                  value={invoiceInfo.clientName}
+                  onChange={(e) => setInvoiceInfo({ ...invoiceInfo, clientName: e.target.value })}
+                  className="input-field"
+                  placeholder="ABC Manufacturing"
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Client Address</label>
+                <input
+                  type="text"
+                  value={invoiceInfo.clientAddress}
+                  onChange={(e) => setInvoiceInfo({ ...invoiceInfo, clientAddress: e.target.value })}
+                  className="input-field"
+                  placeholder="123 Main St, City, ST 12345"
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', marginBottom: '12px', color: colors.text }}>Hourly Rates (for labor line items)</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px', color: colors.textSecondary }}>Driving</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={invoiceInfo.drivingRate}
+                      onChange={(e) => setInvoiceInfo({ ...invoiceInfo, drivingRate: e.target.value })}
+                      className="input-field"
+                      placeholder="$/hr"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px', color: colors.textSecondary }}>Standard</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={invoiceInfo.standardRate}
+                      onChange={(e) => setInvoiceInfo({ ...invoiceInfo, standardRate: e.target.value })}
+                      className="input-field"
+                      placeholder="$/hr"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px', color: colors.textSecondary }}>Overtime</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={invoiceInfo.overtimeRate}
+                      onChange={(e) => setInvoiceInfo({ ...invoiceInfo, overtimeRate: e.target.value })}
+                      className="input-field"
+                      placeholder="$/hr"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px', color: colors.textSecondary }}>Night</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={invoiceInfo.nightRate}
+                      onChange={(e) => setInvoiceInfo({ ...invoiceInfo, nightRate: e.target.value })}
+                      className="input-field"
+                      placeholder="$/hr"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px', color: colors.textSecondary }}>Night OT</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={invoiceInfo.nightOTRate}
+                      onChange={(e) => setInvoiceInfo({ ...invoiceInfo, nightOTRate: e.target.value })}
+                      className="input-field"
+                      placeholder="$/hr"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px', color: colors.textSecondary }}>Weekend</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={invoiceInfo.weekendRate}
+                      onChange={(e) => setInvoiceInfo({ ...invoiceInfo, weekendRate: e.target.value })}
+                      className="input-field"
+                      placeholder="$/hr"
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', marginBottom: '6px', color: colors.textSecondary }}>Weekend OT</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={invoiceInfo.weekendOTRate}
+                      onChange={(e) => setInvoiceInfo({ ...invoiceInfo, weekendOTRate: e.target.value })}
+                      className="input-field"
+                      placeholder="$/hr"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Payment Terms</label>
+                <select
+                  value={invoiceInfo.paymentTerms}
+                  onChange={(e) => setInvoiceInfo({ ...invoiceInfo, paymentTerms: e.target.value })}
+                  className="input-field"
+                >
+                  <option value="Due on Receipt">Due on Receipt</option>
+                  <option value="Net 15">Net 15</option>
+                  <option value="Net 30">Net 30</option>
+                  <option value="Net 60">Net 60</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '8px', color: colors.textSecondary }}>Notes (Optional)</label>
+                <textarea
+                  value={invoiceInfo.notes}
+                  onChange={(e) => setInvoiceInfo({ ...invoiceInfo, notes: e.target.value })}
+                  className="input-field"
+                  style={{ height: '80px', resize: 'none' }}
+                  placeholder="Payment instructions, thank you note, etc."
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                <button 
+                  onClick={() => {
+                    if (!invoiceInfo.clientName) {
+                      alert('Please enter client name');
+                      return;
+                    }
+                    if (!invoiceInfo.standardRate && !invoiceInfo.overtimeRate && !invoiceInfo.drivingRate) {
+                      alert('Please enter at least one hourly rate');
+                      return;
+                    }
+                    generateInvoice(filteredEntries, contractorInfo, invoiceInfo);
+                    setShowInvoiceModal(false);
+                  }}
+                  className="btn-primary" 
+                  style={{ flex: 1 }}
+                >
+                  <Download size={16} />
+                  Generate Invoice
+                </button>
+                <button onClick={() => setShowInvoiceModal(false)} className="btn-secondary" style={{ flex: 1 }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
